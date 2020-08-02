@@ -1,0 +1,798 @@
+* 1.2 手続きとそれが生成するプロセス
+
+考慮中のアクションについて結果を思い描く能力は、達人プログラマになるた
+めに決定的に重要なこと。
+
+抜粋。
+#+begin_src
+プログラミングにおいては、プロセスが取るべき処理の流れを計画し、プログ
+ラムという手段でプロセスをコントロールします。達人になるためには、様々
+なタイプの手続きが生み出すプロセスを思い描けるようになる必要があります。
+
+そのようなスキルを身につけて初めて、望む振る舞いをするプログラムを確実
+に構築できるようになるのです。
+#+end_src
+
+- 手続きは、計算プロセスの *局所展開* （local evaluation）のためのパターン。
+  - プロセスの各段階がどのように前の段階の上に構築されるかを記述するもの
+
+この節の内容
+- 手続きによって作られたプロセスの一般的な”形”についてみていく
+- プロセスが時間や空間の計算リソースを消費する比率も調べる
+
+** 1.2.1 線形再帰と反復
+
+階乗計算。
+~n! = n * (n-1) * (n-2) ... 3 * 2 * 1~
+
+これを再帰的に計算すると以下のように書ける。（1! = 1とする）
+#+begin_src scheme
+(define (factorial n)
+  (if (= n 1)
+      1
+      (* n (factorial (- n 1)))))
+#+end_src
+
+*(引田所感)*
+0! = 1も定義すべき。上記コードだと(factorial 0)はJakldだと無限ループで
+Stack overflowになる。
+
+置換モデル（1.1.5）による6!の計算の様子。
+#+begin_src scheme
+;;; 線形再帰プロセス
+(factorial 6)                                
+(* 6 (factorial 5))                          ;; 展開
+(* 6 (* 5 (factorial 4)))                    ;; 展開
+(* 6 (* 5 (* 4 (factorial 3))))              ;; 展開
+(* 6 (* 5 (* 4 (* 3 (factorial 2)))))        ;; 展開
+(* 6 (* 5 (* 4 (* 3 (* 2 (factorial 1))))))  ;; 展開
+(* 6 (* 5 (* 4 (* 3 (* 2 1)))))              ;; 縮約
+(* 6 (* 5 (* 4 (* 3 2))))                    ;; 縮約
+(* 6 (* 5 (* 4 6)))                          ;; 縮約
+(* 6 (* 5 24))                               ;; 縮約
+(* 6 120)                                    ;; 縮約
+720                                          ;; 縮約
+#+end_src
+
+別の計算規則として考えることも可能。
+- n!は、最初に 1*2、その答えに3をかけ、その答えに4をかけ、nまで続ける、
+  というのも可能
+形式的に書くと、
+#+begin_src
+product <- counter * product
+counter <- counter + 1
+#+end_src
+- 計算中の積と、1からnまで数え上げていくカウンタとの両方を保存する
+- カウンタがnを超えた時点での積の値がn!と規定する
+コードで書くと以下のようになる。
+#+begin_src scheme
+(define (factorial n)
+  (fact-iter 1 1 n))
+(define (fact-iter product counter max-count)
+  (if (> counter max-count)
+      product
+      (fact-iter (* counter product)
+                 (+ counter 1)
+                 max-count)))
+#+end_src
+
+上記コードによる6!の計算過程。
+#+begin_src scheme
+;;; 線形反復プロセス
+(factorial 6)
+(fact-iter 1 1 6)
+(fact-iter 1 2 6)
+(fact-iter 2 3 6)
+(fact-iter 6 4 6)
+(fact-iter 24 5 6)
+(fact-iter 120 6 6)
+(fact-iter 720 7 6)
+720
+#+end_src
+
+
+*** 計算過程の違いについて
+
+- 1つ目のプロセス（これは線形再帰プロセス）
+  - 展開による縮約の形
+    - *展開*: プロセスが遅延演算（deferred operation）の連鎖（掛け算
+      の連鎖）を構築する際に起こる
+    - *縮約*: 演算が実際に行われる際に起こる
+  - このようなプロセスを *再帰プロセス(recursive process)* という
+    - 遅延演算の連鎖によって特徴付けられる
+    - インタプリタは後で実行する演算について記録しておく必要がある
+  - さらに以下の性質によりこのプロセスは *線形再帰プロセス(linear recursive process)* でもある
+    - nに対して以下が線形に増加する
+      - 遅延乗算の連鎖の長さ
+      - 連鎖を記憶しておくために必要な情報（量）
+      - 計算ステップ数
+- 2つ目のプロセス（これは線形反復プロセス）
+  - 各ステップで記録しておく必要があるのは、どんなnに対しても以下の3変数だけ
+    - product
+    - counter
+    - max-count
+  - 再帰プロセスのように記録すべき情報が増えたり減ったり（伸びたり縮んだり）しない
+  - これは *反復プロセス(iterative process)* と呼ぶ
+    - 状態が限られた数の状態変数（state variable, この場合product,
+      counter, max-count）に集約される
+    - プロセスの状態変化に応じ状態変数がどのように更新されるかという規則と、
+    - どのような条件でプロセスを停止するかを定めた（必須ではない）終了テストからなる
+  - n（入力とでも呼ぶべきか？）に対して線形に計算ステップが増加する場
+    合、 *線形反復プロセス(linear iterative process)* と呼ばれる
+
+その他の違い
+- 反復プロセスはプログラムの変数はどの時点でもプロセスの状態を完全に記
+  述しているので計算途中から再開することも可能だが再帰プロセスはそれは
+  できない
+  - 反復プロセスでは、途中までの状態変数を記録しておけば、その変数値を
+    インタプリタに渡せば続きから計算可能
+
+*再帰プロセス* と *再帰手続き* 
+
+- プロセス(process)と手続き(procedure)は区別された概念
+- 手続きが再帰
+  - その手続の定義が（直接 or 間接的に）その手続自身を参照しているとい
+    う構文的事実を指している
+- プロセスが再帰
+  - どのようにプロセスが展開するかであって、手続きがどのように書かれて
+    いるかという構文の問題ではない
+
+例) fact-iterは *再帰手続き* だが、二つ目の実装例では *反復プロセス*
+を生成する。
+
+他の言語（Ada, Pascal, C,...）では再帰手続きは再帰プロセスで実装されて
+いる（現在でもそうかは不明）。だから反復処理専用の構文がある（do,
+repeat, until, for, while等）
+
+*末尾再帰(tail-recursive)*
+- 反復プロセスが、再帰手続きとして記述されていても固定の空間で実行（つ
+  まり反復プロセス）出来る性質を持った実装
+- 末尾再帰の場合、反復用の特別な構文は不要（糖衣構文として役に立つくら
+  いでしかない）
+
+
+*** 練習問題 1.9
+次の二つの手続きは、どちらもinc, decという手続きによって二つの正の整数
+を加算する方法を定義している。手続きincは引数を1増やし、decは引数を1減らす。
+#+begin_src schem
+(define (+ a b)
+  (if (= a 0) b (inc (+ (dec a) b))))
+(define (+ a b)
+  (if (= a 0) b (+ (dec a) (inc b))))
+#+end_src
+置換モデルを使って、それぞれの手続きが ~(+ 4 5)~ を評価する際に生成す
+るプロセスを図示せよ。これらのプロセスは反復だろうか、それとも再帰だろ
+うか。
+
+*回答*
+#+begin_src scheme
+;;; 1つ目
+(+ 4 5)
+(inc (+ (dec 4) 5))
+(inc (+ 3 5))
+(inc (inc (+ (dec 3) 5)))
+(inc (inc (+ 2 5)))
+(inc (inc (inc (+ (dec 2) 5))))
+(inc (inc (inc (+ 1 5))))
+(inc (inc (inc (inc (+ (dec 1) 5)))))
+(inc (inc (inc (inc (+ 0 5)))))
+(inc (inc (inc (inc 5))))
+(inc (inc (inc 6)))
+(inc (inc 7))
+(inc 8)
+9
+
+;;; 2つ目
+(+ 4 5)
+(+ (dec 4) (inc b))
+(+ 3 6)
+(+ (dec 3) (inc 7))
+(+ 2 7)
+(+ (dec 2) (inc 7))
+(+ 1 8)
+(+ (dec 1) (inc 8))
+(+ 0 9)
+9
+#+end_src
+上記結果より、1つ目は再帰的プロセスで二つ目は反復的プロセス。
+
+*** 練習問題 1.10
+次の手続きは、アッカーマン関数と呼ばれる数学の関数を計算する。
+#+begin_src scheme
+(define (A x y)
+  (cond ((= y 0) 0)
+        ((= x 0) (* 2 y))
+        ((= y 1) 2)
+        (else (A (- x 1) (A x (- y 1))))))
+#+end_src
+以下の式の値は何になるか。
+#+begin_src scheme
+(A 1 10) => 1024
+(A 2 4) => 65536
+(A 3 3) => 65536
+#+end_src
+Aが上で定義された手続きであるとき、以下の手続きについて考えよ。
+#+begin_src scheme
+(define (f n) (A 0 n))
+(define (g n) (A 1 n))
+(define (h n) (A 2 n))
+(define (k n) (* 5 n n))
+#+end_src
+手続きf, g, hによって、正の整数nに対して計算される関数に対し、簡潔な数
+学定義を与えよ。例えば、 (k n)は5n^2を計算する。
+
+** 1.2.2 木構造再帰
+
+計算でよくあるパターンのもう一つは *木の再帰 (tree recursion)* である
+
+Fibonacci数の列は木構造で考えることが出来る。（図1.5参照）
+
+Fibonacci数のSchemeによる定義:
+#+begin_src scheme
+(define (fib n)
+  (cond ((= n 0) 0)
+        ((= n 1) 1)
+        (else (+ (fib (- n 1))
+                 (fib (- n 2))))))
+#+end_src
+
+Fibonacciの展開プロセスは木構造となる。
+- 枝は、葉以外のそれぞれのレベルで二つに分かれている
+  - fib手続きが呼ばれるたびに自身を二回呼び出すことを反映している
+- 木の再帰の学習のためにはよいが、フィボナッチ数を計算するプロセスとし
+  てはひどいもの
+- 図1.5だと、(fib 3)の計算が完全に重複してしまっている
+- Fib(n)の値がnに対して指数的に増える
+  - より正確には Fib(n) は phi^n / sqrt(5) に最も近い整数になる(練習問題1.13)
+- 計算量でみると
+  - プロセスのステップ数（時間計算量）: 入力に対して指数的に増加
+  - 必要な空間（空間計算量）: 入力に対して線形に増加
+
+一般的な木の再帰計算
+- 再帰プロセスのステップ数: 木のノード数に比例
+- 必要な空間: 木の最大の深さに比例
+
+フィボナッチ数は反復プロセスとして定式化可能
+#+begin_src
+// Fib(1) = 1, Fib(0) = 0 と初期化して、以下の変換を同時に適用することを繰り返す
+a <- a + b,
+b <- a
+#+end_src
+
+以下の手続きによりフィボナッチ数を反復的に計算できる。
+この手続きは線形反復である。
+#+begin_src scheme
+(define (fib n)
+  (fib-iter 1 0 n))
+(define (fib-iter a b count)
+  (if (= count 0)
+      b
+      (fib-iter (+ a b) a (- count 1))))
+#+end_src
+
+- 反復アルゴリズムを定式化するのは、計算が三つの状態変数を使った反復と
+  して書き直せることに気づく必要がある
+
+
+*** 例: 両替パターンの計算 
+
+- 任意の金額に対して、両替のパターン数を計算する手続きを書くことはでき
+  るだろうか。
+- n種類のコインを使って金額aを両替するやり方のパターンは以下の合計となる
+  - 1つ目の種類のコイン以外の全ての種類のコインを使って金額aを両替するやり方のパターン数
+  - n種類の硬貨全てを使って、金額a - d を両替するやり方のパターン数。d
+    は1つ目の種類のコインの額面とする
+
+再帰的手続き
+#+begin_src scheme
+(define (count-change amount) (cc amount 5))
+(define (cc amount kinds-of-coins)
+  (cond ((= amount 0) 1)
+        ((or (< amount 0) (= kinds-of-coins 0)) 0)
+        (else (+ (cc amount
+                     (- kinds-of-coins 1))
+                 (cc (- amount
+                        (first-denomination
+                         kinds-of-coins))
+                     kinds-of-coins)))))
+(define (first-denomination kinds-of-coins)
+  (cond ((= kinds-of-coins 1) 1)
+        ((= kinds-of-coins 2) 5)
+        ((= kinds-of-coins 3) 10)
+        ((= kinds-of-coins 4) 25)
+        ((= kinds-of-coins 5) 50)))
+#+end_src
+
+- ~first-denomination~ 手続き
+  - 利用可能な硬貨の種類の数を入力として、1つ目の種類のコインの額面を返す
+    - この例では硬貨は額面の大きな物から小さなものという順番で並んでい
+      るとしてる（ただしどんな順番でも問題ないとのこと）
+  - これで1ドルの両替という元々の質問に答えることができる
+
+木の再帰プロセスはとても非効率的になりうるが、記述と理解が簡単であることが多い。
+- 賢いコンパイラを設計して、木の再帰のプロセスをより効率的な手続きに変
+  換出来るようにしたら両者のいいとこ取りが出来るんじゃないかという提案
+  がされている
+  - テーブル化（tabulation）
+  - メモ化（memoization）
+  - (メモ): 再帰をより効率的な手続きに変換させるためという観点でテーブ
+    ル化やメモ化について理解したい
+
+*** 練習問題 1.11
+
+再帰プロセス
+#+begin_src scheme
+(define (f n)
+  (cond ((< n 3) n)
+        (else (+ (f (- n 1))
+                 (* 2 (f (- n 2)))
+                 (* 3 (f (- n 3)))))))
+#+end_src
+
+反復プロセス
+#+begin_src scheme
+(define (f n)
+  (f-iter 2 1 0 n))
+(define (f-iter a b c count)
+  (if (= count 0)
+      c
+      (f-iter (+ a
+                 (* 2 b)
+                 (* 3 c))
+              a
+              b
+              (- count 1))))
+#+end_src
+答えは正しいが、ちゃんと反復プロセスかどうかは確認出来ないな。
+
+(コメント): 確かに再帰プロセスはschemeだと書きやすい気がする
+
+
+*** 練習問題 1.12
+
+
+*** 練習問題 1.13
+** 1.2.3 増加オーダー
+前節の例はプロセスが計算リソースを消費する量の増え方に大幅に差が出るこ
+とがあるということを示している
+
+入力が増えるに従ってプロセスが必要とするリソースがどの程度になるかにつ
+いての大雑把に把握するために使う概念として *増加オーダー (order of
+growth)* が使われる
+
+*** 増加オーダー
+*定義*
+
+- 問題の大きさを図るパラメータをnとする
+  - nの例:
+    - 数値の平方根を求める問題では、求める精度の桁数をnとする
+    - 行列の掛け算では、nを行列の行数とする、等
+- プロセスが必要とするリソース量をR(n)とする
+  - R(n)の例: 使用される内部のレジスタ数, 実行される基本的な機械語命令数、等
+- nと独立な正の定数k1とk2が存在し、 k1f(n) <= R(n) <= k2f(n) を満たす
+  とき、R(n)は増加オーダーがΘ(f(n))であるといい、R(n) = Θ(f(n))と書く
+
+*** 1.2.1節の階乗を計算求める線形再帰プロセスの例
+- 線形反復プロセスの場合
+  - ステップ数は入力nに比例。つまり必要なステップ数はΘ(n)
+  - 必要な空間もΘ(n)
+- 線形反復プロセスの場合
+  - ステップ数はΘ(n)
+  - 必要な空間はΘ(1)　（つまり定数）
+
+*** 木の再帰（フィボナッチ数の計算）の例
+- ステップ数: $theta ($\phi^n$)$
+- 必要な空間: $theta (n)$
+
+増加オーダーはプロセスの振る舞いについて大雑把な記述をするだけ。問題の
+大きさを変えた場合のプロセスの振る舞いをどう予測するかということについ
+ては役に立つ指標。
+
+*** 練習問題1.14
+*** 練習問題1.15
+ 
+** 1.2.4 指数関数
+
+与えられた数値の指数を求める問題を考える。基数bと正の整数の指数nを引数
+に取り、$b^n$を求める手続きになる。
+
+再帰的定義による定義
+
+#+begin_latex
+\begin{align}
+b^n &= b \cdot b^{n-1}, \\
+b^0 &= 1,
+\end{align}
+#+end_latex
+
+これは次の手続きに変換出来る。
+#+begin_src scheme
+(define (expt b n)
+  (if (= n 0)
+      1
+      (* b (expt b (- n 1)))))
+#+end_src
+これは線形再帰プロセスで、 $\Theta(n)$のステップと$\Theta(n)$の空間を
+必要とする。
+
+
+等価な線形反復は以下のようになる。
+#+begin_src scheme
+(define (expt b n)
+  (expt-iter b n 1))
+(define (expt-iter b counter product)
+  (if (= counter 0)
+      product
+      (expt-iter b
+                 (- counter 1)
+                 (* b product))))
+#+end_src
+このバージョンは $\Theta(n)$のステップ数と$\Theta(1)$の空間を必要とす
+る。
+
+指数は2乗を連続して使うことでより少ないステップ数で計算出来る。例えばb
+の8乗は以下のようにbの乗算を8回計算するのではなく、
+#+begin_latex
+$ b \cdot (b \cdot (b \cdot (b \cdot (b \cdot (b \cdot (b \cdot b)))))),
+#+end_latex
+3回の乗算で求めることが出来る。この方法は指数が2の冪乗である場合にうまくいく。
+#+begin_latex
+\begin{align}
+b^2 &= b \cdot b, \\
+b^4 &= b^2 \cdot b^2, \\
+b^8 &= b^4 \cdot b^4.
+\end{align}
+#+end_latex
+これを一般化すると以下のようになる。
+#+begin_latex
+\begin{align}
+b^n &= (b^{n/2})^2,      & \text{if $n$ is even} \\
+b^n &= b \cdot b^{n-1}  & \text{if $n$ is odd} \\
+\end{align}
+#+end_latex
+
+そして、手続きとして表現すると以下のようになる。
+#+begin_src scheme
+;; 補助手続き
+(define (square x) (* x x))
+(define (even? n)
+  (= (remainder n 2) 0))
+
+;; メイン手続き
+(define (fast-ept b n)
+  (cond ((= n 0) 1)
+        ((even? n) (square (fast-expt b (/ n 2))))
+        (else (* b (fast-expt b (- n 1))))))
+#+end_src
+
+*** 練習問題
+**** 1.16
+**** 1.17
+**** 1.18
+**** 1.19
+
+** 1.2.5 最大公約数
+
+- 2つの整数aとbの最大公約数（Greatest Common Divisor, GCD） はaとbの両
+  方をぴったり割り切れる最大の整数
+  - 例) 16と28のGCDは4
+- 2つの整数のGCDを求める方法の例
+  - それらを素因数分解して共通の素因数を探す
+  - ユークリッドの互除法を使う（素因数分解よりずっと効率的）
+
+- *ユークリッドの互除法 (Euclid's Algorithm)*
+  - rがaをbで割った余り（remainder）であれば、aとbの公約数はbとrの公約
+    数と同じものになる、という観察に基づく
+  - 次の等式
+    #+begin_src
+    GCD(a,b) = GCD(b,r)
+    #+end_src
+    によってGCDを計算する問題をより小さな整数ペアのGCDを計算する問題へ
+    と連続的に簡約していくことができる
+
+- GCDの計算例: GCD(206, 40)
+  #+begin_src
+  GCD(206, 40) = GCD(40, 6) // 206 % 40 = 6 then GCD(40, 6)
+               = GCD(6, 4)  //  40 %  6 = 4 then GCD(6, 4)
+               = GCD(4, 2)  //   6 %  4 = 2 then GCD(4, 2)
+               = GCD(2, 0)  //   4 %  2 = 0 then GCD(2, 0)
+               = 2
+  #+end_src
+  この例ではGCD(206, 40)をGCD(2,0)まで簡約していて、その答えは2である。
+  - 任意の2つの整数から始めて、簡約していくと必ず二つ目の数値が0のペア
+    ができることが証明可能で、そのときのGCDはペアのもう一つの値になる
+  - （メモ）どうして2で良いかはイマイチ腑に落ちていない2と0の最大公約
+    数は無いから2だと言っている？
+
+*ユークリッドの互除法のプログラム*
+#+begin_src scheme
+(define (gcd a b)
+  (if (= b 0)
+      a
+      (gcd b (remainder a b))))
+#+end_src
+
+これは反復プロセスを生成し、ステップ数は計算する数値に対して対数的に増加する
+- この事実はフィボナッチ数と興味深い関係を持つ
+
+*Lemaの定理*
+#+begin_src
+ユークリッドの互除法によって、ある数値ペアのGCDを計算するのにkステップ
+を必要とする場合、ペアの小さいほうの数値はk番目のフィボナッチ数以上で
+ある。
+#+end_src
+
+- Lemaの定理より、ユークリッドの互除法の増加オーダーは $Theta(logn)$
+  となる
+
+*** 練習問題
+**** 1.20
+正規順序評価（“完全に展開してから簡約する”評価方法）
+#+begin_src scheme
+;; 簡単のため、remainderをrと省略する
+(gcd 206 40)
+> (if (= 40 0) 206 (gcd 40 (r 206 40))) ;;  (gcd 40 (r 206 40))
+> (if (= (r 206 40) 0) 40 (gcd (r 206 40) (r 40 (r 206 4)))) ;; r演算1回
+>> (if (= 6 0) 40 (gcd (r 206 40) (r 40 (r 206 4)))) ;; (gcd (r 206 40) (r 40 (r 206 4)))
+> (if (= (r 40 (r 206 4)) 0) (r 206 40) (gcd (r 40 (r 206 4)) (r (r 206 40) (r 40 (r 206 4))))) ;; r演算2回
+>> (if (= 4 0) (r 206 40) (gcd (r 40 (r 206 4)) (r (r 206 40) (r 40 (r 206 4))))) ;; (gcd (r 40 (r 206 4)) (r (r 206 40) (r 40 (r 206 4))))
+> (if (= (r (r 206 40) (r 40 (r 206 4))) 0) (r 40 (r 206 4)) (gcd (r (r 206 40) (r 40 (r 206 4))) (r (r 40 (r 206 4)) (r (r 206 40) (r 40 (r 206 4)))))) ;; r演算4回
+>> (if (= 2 0) (r 40 (r 206 4)) (gcd (r (r 206 40) (r 40 (r 206 4))) (r (r 40 (r 206 4)) (r (r 206 40) (r 40 (r 206 4)))))) ;; (gcd (r (r 206 40) (r 40 (r 206 4))) (r (r 40 (r 206 4)) (r (r 206 40) (r 40 (r 206 4)))))
+> (if (= (r (r 40 (r 206 4)) (r (r 206 40) (r 40 (r 206 4)))) 0) (r (r 206 40) (r 40 (r 206 4))) (gcd (r (r 40 (r 206 4)) (r (r 206 40) (r 40 (r 206 4)))) (r (r (r 206 40) (r 40 (r 206 4))) (r (r 40 (r 206 4)) (r (r 206 40) (r 40 (r 206 4))))))) ;; r演算7回
+>> (if (= 0 0) (r (r 206 40) (r 40 (r 206 4))) (gcd (r (r 40 (r 206 4)) (r (r 206 40) (r 40 (r 206 4)))) (r (r (r 206 40) (r 40 (r 206 4))) (r (r 40 (r 206 4)) (r (r 206 40) (r 40 (r 206 4))))))) ;; (r (r 206 40) (r 40 (r 206 4)))
+> (r (r 206 40) (r 40 (r 206 4))) ;; r演算2回
+> (r 6 (r 40 6)) ;; r演算1回
+> (r 6 4) ;; r演算1回
+> 2
+#+end_src
+正規順序評価ではifでremainderが評価される。if文は特殊形式のためまず最
+初に述語部分が評価され、その評価結果に従い帰結分もしくは代替部が評価さ
+れる。そのため2つ目以降のif文では述語にあるremainder演算は評価される。
+述語を評価するとプロセス図の通りしばらく代替部の評価が続く。正規順序評
+価なので評価の前に可能な限り引数は展開されるが、代替部のGCD手続きの引
+数であるremainder演算は（多分）基本手続きなのでそれ以上展開できずその
+ままifに渡される。そしてifの述語を評価し、代替式の評価を続けていき、最
+後にifの述語が真となるため帰結部が評価される。帰結部の評価になるまでに
+remainder演算は14回適用され、帰結部ではremainder演算は4回評価される。
+従って、正規順序評価全体でのremainder演算の適用回数は14 + 4 = 18回とな
+る。
+
+
+適用順序評価（“引数を評価してから適用する”評価方法）
+#+begin_src scheme
+(gcd 206 40)
+> (if (= 40 0) 206 (gcd 40 (r 206 40))) ;; r演算1回, (gcd 40 6)
+> (if (= 6 0) 40 (gcd 6 (r 40 6))) ;; r演算1回, (gcd 6 4)
+> (if (= 4 0) 6 (gcd 4 (r 6 4))) ;; r演算1回, (gcd 4 2)
+> (if (= 2 0) 4 (gcd 2 (r 4 2))) ;; r演算1回, (gcd 2 0)
+> (if (= 0 0) 2 (gcd 0 (r 2 0))) ;; (= 0 0)がtrueなので 代替部: (gcd 0 (r 2 0)) は評価されない
+> 2
+#+end_src
+適用順序では引数を評価してから手続きに渡すので、remainder演算は4回実行
+される。
+
+** 1.2.6 例: 素数判定
+
+この節は整数nの素数性をチェックする二つの方法について説明する
+- 増加オーダーが $\Theta(\sqrt{n})$ の方法と
+- 増加オーダーが $\Theta(\log{n})$ の方法
+
+*** 約数を探す
+ある数値が素数であるかテストする方法の一つとして、その数値の約数を探す
+というものがある。
+
+次のプログラムは、ある数値nをちょうど割り切る（1以上の）最も小さな数を
+見つける。
+#+begin_src scheme
+(define (smallest-divisor n) (find-divisor n 2))
+(define (find-divisor n test-divisor)
+  (cond ((> (square test-divisor) n) n)
+        ((divides? test-divisor n) test-divisor)
+        (else (find-divisor n (+ test-divisor 1)))))
+(define (divides? a b) (= (remainder b a) 0))
+;; 補足
+(define (square n) (* n n))
+#+end_src
+これは2から始まる一連の数字でnが割り切れるかどうかを調べる素直な方法。
+find-divisorの終了条件は、もしnが素数でないならば、それは $\sqrt{n}$
+以下の約数を持つという事実に基づいている。
+
+つまり1から $\sqrt{n}$ までの約数についてだけテストすれば良いので、nが
+素数であるかを判定するのに必要なステップ数は、増加オーダーが
+$\Theta(\sqrt{n})$ となる。
+
+数値が素数であるかは次のようにテストできる: nは、n自身がその最小の約数
+である場合、かつその場合に限り、素数である。
+#+begin_src scheme
+(define (prime? n)
+  (= n (smallest-divisor n)))
+#+end_src
+
+*** フェルマーテスト
+$\Theta(\log{n})$ の素数判定はフェルマーの小定理に基づいている。
+
+*フェルマーの小定理*
+#+begin_src
+nが素数で、aがnより小さい任意の正の整数であるとき、aのn乗は法nに関してaと合同である。
+#+end_src
+
+- 補足
+  - 2つの数値は、その両方をnで割ったときの余りが同じになる場合、 *法n
+    に関して合同(congruent modulo n)* という。また、aをnで割ったときの
+    余りは *法nに関するaの剰余 (a modulo n)* と呼ばれる
+  - もしnが素数でなければ、一般にa<nであるほとんどのaは上記の関係を満
+    たさない
+
+*フェルマーテストによる素数判定プログラム*
+#+begin_src scheme
+;; ある数値の冪乗の、別のある数値を法とした剰余を求める手続き
+(define (expmod base exp m)
+  (cond ((= exp 0) 1)
+        ((even? exp)
+          (remainder
+            (square (expmod base (/ exp 2) m))
+            m))
+        (else
+          (remainder 
+            (* base (expmod base (- exp 1) m))
+            m))))
+
+;; フェルマーテスト
+(define (fermat-test n)
+  (define (try-it a)
+    (= (expmod a n n) a))
+  (try-it (+ 1 (random (- n 1)))))
+
+;; 高速な素数判定プログラム
+;; times回フェルマーテストを繰り返す
+(define (fast-prime? n times)
+  (cond ((= times 0) true)
+        ((fermat-test n) (fast-prime? n (- times 1)))
+        (else false)))
+#+end_src
+
+
+*** 確率的手法
+
+- フェルマーテストでは得られた答えの正しさは確率的なものでしかない
+- このアルゴリズムが主張したいことは、任意の数値nについて、十分な回数
+  のテストを行ってnが全てのテストをパスすることが確認できれば、この素
+  数判定が間違う確率を好きなだけ小さくできるということ
+  - でも実際はこの主張は正しくない
+  - フェルマーテストを騙す数が存在する（カーマイケル数）
+- 騙されないフェルマーテストの変種もある
+  - 任意のnに対し、nが素数出ない限りa<nであるほとんどの整数aについてそ
+    の条件が成立しないことが証明できる
+- 間違いの確率が好きなだけ小さくすることが証明できるテストの存在は、確
+  率的アルゴリズムの研究分野に寄与した
+
+*** 練習問題
+**** 1.21
+smallest-divisor手続きを使って次の数値の最小の約数を求めよ。199, 1999, 19999
+
+***** 回答
+#+begin_src scheme
+(smallest-divisor 199)
+199
+
+(smallest-divisor 1999)
+1999
+
+(smallest-divisor 19999)
+7
+#+end_src
+
+**** 1.22
+ほとんどのLisp実装はruntimeという基本手続きを持っていて、システムが動
+いた時間を整数（例えば、マイクロ秒で計測したもの）として返す。次の
+timed-prime-test手続きは、整数nを引数として呼ばれると、nを表示し、nが
+素数であるかチェックする。nが素数であれば、手続きは3つのアスタリスクと、
+テスト実行に掛かった時間を表示する。
+#+begin_src scheme
+(define (timed-prime-test n)
+  (newline)
+  (display n)
+  (start-prime-test n (runtime)))
+(define (start-prime-test n start-time)
+  (if (prime? n)
+      (report-prime (- (runtime) start-time))))
+(define (report-prime elapsed-time)
+  (display " *** ")
+  (display elapsed-time))
+#+end_src
+この手続を使って、指定した範囲の連続した奇数について素数判定を行う手続
+きsearch-for-primesを書け。その手続きを使って、1000, 10,000, 100,000よ
+り大きな素数をそれぞれ3つ見つけよ。判定アルゴリズムは
+$\Theta(\sqrt{n})$ の増加オーダーを持っているので、10,000あたりの判定
+には1000辺りの $\sqrt{10} (=3.1622..)$ 倍程度の時間が掛かるはずである。
+あなたの計測データはこれを裏付けているだろうか。100,000や1,000,000のデー
+タは、 $\Theta(\sqrt{n})$ という予想はどれだけ当たっているだろうか。あ
+なたの結果は、演算に必要なステップ数に比例して実行時間が増えるという概
+念に矛盾していないだろうか。
+
+***** 回答
+#+begin_src scheme
+;; prime? procedure
+(define (prime? n)
+  (define (square n) (* n n))
+  (define (smallest-divisor n) (find-divisor n 2))
+  (define (find-divisor n test-divisor)
+    (cond ((> (square test-divisor) n) n)
+          ((divides? test-divisor n) test-divisor)
+          (else (find-divisor n (+ test-divisor 1)))))
+  (define (divides? a b) (= (remainder b a) 0))
+  (= n (smallest-divisor n)))
+
+;; timed prime test
+(define (timed-prime-test n)
+  (newline)
+  (display n)
+  (start-prime-test n (runtime)))
+(define (start-prime-test n start-time)
+  (if (prime? n)
+      (report-prime n (- (runtime) start-time))))
+(define (report-prime n elapsed-time)
+  (display " *** ")
+  (display elapsed-time))
+
+;; search for primes
+(define (search-for-primes begin end)
+  (define (test-iter  target n)
+    (timed-prime-test target)
+    (if (> n 0)
+        (test-iter (+ target 2) (- n 1))))
+  (if (even? begin)
+      (test-iter (+ begin 1) (- end begin))
+      (test-iter begin (- end begin)))
+)
+
+;;--------- here's are appendix
+;; find primes
+(define (find-primes begin end n)
+  (define (find-iter begin end n)
+    (cond ((= n 0) (display ""))
+          ((> begin end) (display "search end"))
+          ((prime? begin) (report-and-next begin end n))
+          (else (find-iter (+ begin 1) end n))))
+  (define (report-and-next prime end n)
+    (display prime)
+    (newline)
+    (find-iter (+ prime 1) end (- n 1)))
+  (find-iter begin end n))
+#+end_src
+
+上記プログラムで
+
+
+***** issue
+- jakld, DrRacketともにruntime基本手続きは存在しない。
+- これらのベージを参考に必要なら独自実装する必要があるかも
+  - [[https://gist.github.com/Isaac-Kleinman/1b623bc2463b241b4383][gist]]
+  - [[https://stackoverflow.com/questions/2195105/is-there-an-equivalent-to-lisps-runtime-primitive-in-scheme][StackOverflow]]
+  - [[https://www.gnu.org/software/mit-scheme/documentation/mit-scheme-ref/Machine-Time.html][MIT Schemeにはあるっぽい]]
+**** 1.23
+**** 1.24
+**** 1.25
+**** 1.26
+**** 1.27
+**** 1.28
+** 1.2 総括
+- 復習: 「置換モデル (substitution model)」 by 1.1.5
+  - 置換モデルは *手続きの適用モデル* の一つ
+  - *手続きの適用モデル* とは、手続きとその引数が与えられたときに、ど
+    うやってその引数を手続きに適用するかの、手続き適用の評価手順を表し
+    たもの (あくまでも自分の理解として)
+  - 置換モデルの適用手順
+    - 複合手続きを引数に適用するには、手続きの本体に出てくる仮引数を対
+      応する引数で置き換えて、それを評価する
+
+- 線形再帰プロセスと線形反復プロセス
+  - 線形再帰プロセス
+    - 入力サイズnに対して、計算ステップがnに比例（線形）して増加し、（遅延演算
+      のための）メモリ量もnに比例して増加する
+  - 線形反復プロセス
+    - 入力サイズnに対して、計算ステップがnに比例（線形）して増加するが、
+      メモリ量はnに関係なく一定
+- Schemeでは再帰手続きを再帰プロセスとしても反復プロセスとしても書ける
+- （ *TODO 要確認* ）Schemeで反復プロセスを書くことは末尾再帰を書くことと等しい？
+  - 3章でより詳細に議論されるらしい

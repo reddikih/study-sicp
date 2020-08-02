@@ -1,0 +1,1739 @@
+* 1.3 高階手続きによる抽象の定式化
+
+- 手続きは事実上、数値に対する複合演算を特定の数値から独立した形で記述
+  する抽象化であることをみてきた。
+- 強力なプログラミング言語であればよくあるパターンに名前をつけて抽象化
+  し、その抽象化したものを直接使って作業ができる能力が求められる。
+  - *手続き* はこの能力を提供する
+- 同じプログラミングパターンがいくつもの異なる手続きに利用されるという
+  ことはよくある
+  - 手続きを引数として受け取ったり、手続きを返り値として返したりできる
+    手続きを作れる必要がる
+- 手続きを操作する手続きは、 *高階手続き (higher-order procedure)* と
+  呼ばれる
+- 高階手続きは言語の表現力を大幅に高める強力な抽象化メカニズムである
+  - ということをこの節では示していく
+
+** 1.3.1 引数としての手続き
+
+次の3つの手続きについて考える。
+前提として以下の手続きの定義が必要。
+#+begin_src scheme
+(define (cube x) (* x x x))
+#+end_src
+
+- 一つ目: aからbまでの整数の和
+#+begin_src scheme
+(define (sum-integers a b)
+  (if (> a b)
+      0
+      (+ a (sum-integers (+ a 1) b))))
+#+end_src
+
+- 二つ目: 範囲内の整数についての三乗の和
+#+begin_src scheme
+(define (sum-cubes a b)
+  (if (> a b)
+      0
+      (+ (cube a)
+         (sum-cubes (+ a 1) b))))
+#+end_src
+
+- 三つ目: 級数の和
+  - #+begin_latex
+    TBD
+    #+end_latex
+#+begin_src scheme
+(define (pi-sum a b)
+  (if (> a b)
+      0
+      (+ (/ 1.0 (* a (+ a 2)))
+         (pi-sum (+ a 4) b))))
+#+end_src
+
+- これら3つの手続きの背後には共通パターンがある
+  - それれはほとんど同じ
+- 違うのは次の要素くらい
+  - 手続き名
+  - 足し合わせる各項を計算するために使われるaの関数
+  - aの次の値を求める関数
+
+それぞれの手続は以下の雛形の穴を埋めることで生成できそう
+#+begin_src scheme
+(define (<name> a b)
+  (if (> a b)
+      0
+      (+ (<term> a)
+         (<name> (<next> a) b))))
+#+end_src
+
+- このような抽象化の例は級数の総和（summation of a series）であるシグ
+  マ記法などがある
+- シグマ記法の力によって数学者は特定の数の総和だけでなく、 *総和という
+  概念そのものを扱えるようになった*
+  - 特定の級数から独立して、総和についての一般的な結果について定式化で
+    きるようになった
+
+schemeでも総和という概念そのものを表現する手続きを以下のようにして書く
+ことが可能。これは、上記の共通雛形を持ってきてその”穴”を仮引数に変えた
+だけ。
+#+begin_src scheme
+;; term: 項を計算する手続き
+;; next: 次の値を計算する手続き
+;; a: 下限
+;; b: 上限
+(define (sum term a next b)
+  (if (> a b)
+      0
+      (+ (term a)
+         (sum term (next a) next b))))
+#+end_src
+
+上記雛形を使った *sum-cubes* の定義
+#+begin_src scheme
+(define (inc n) (+ n 1))
+(define (sum-cubes a b)
+  (sum cube a inc b))
+;; Just in case
+(define (cube x) (* x x x))
+#+end_src
+
+これを使った1から10までの整数の三乗の和の計算は以下の通り
+#+begin_src scheme
+(sum-cubes 1 10)
+3025
+#+end_src
+
+
+項の計算にidentity（恒等）手続きを使うと、sumによってsum-integersを定
+義出来る。
+#+begin_src scheme
+(define (identity x) x)
+(define (sum-integers a b)
+  (sum identity a inc b))
+#+end_src
+
+1から10までの整数の合計は以下の通り。
+#+begin_src scheme
+(sum-integers 1 10)
+55
+#+end_src
+
+pi-sumも同じように定義できる。
+#+begin_src scheme
+(define (pi-sum a b)
+  (define (pi-term x)
+    (/ 1.0 (* x (+ x 2))))
+  (define (pi-next x)
+    (+ x 4))
+  (sum pi-term a pi-next b))
+#+end_src
+
+$\pai$ の近似値の計算
+#+begin_src scheme
+(* 8 (pi-sum 1 1000))
+3.139592655589783
+
+(* 8 (pi-sum 1 10000))
+;; stack overflow
+#+end_src
+
+#+begin_src
+（引田メモ）
+pi-sumの範囲を1から10000までにするとjakldではオーバーフローが発生して
+しまう。これは再帰プロセスということか。
+#+end_src
+
+
+~sum~ を構築用ブロックとして使って別の概念を定式化出来る。
+例) 関数fの範囲aからbの定積分
+- 小さなdxの値を使い、次の式（TBD）によって数値的に近似出来る。
+  #+begin_latex
+  $ \int_a^b = \left[ f\left( a + \frac{dx}{2} \right) + f\left( a + dx + \frac{dx}{2} \right) + f\left( a + 2dx + \frac{dx}{2} \right) + ... \right]dx $
+  #+end_latex
+  [[./img/1-3-1-001.png]]
+- この手続は以下のように書ける
+  #+begin_src scheme
+    (define (integral f a b dx)
+      (define (add-dx x)
+	(+ x dx))
+      (* (sum f (+ a (/ dx 2.0)) add-dx b)
+	 dx))
+  #+end_src
+
+計算例
+#+begin_src scheme
+(integral cube 0 1 0.01)
+0.24998750000000042
+
+(integral cube 0 1 0.001)
+;; jakldではstack overflow..
+#+end_src
+
+*NOTE:* cubeを0から1の範囲で定積分したとき、その正確な値は1/4である。
+ （ *TODO* sumを反復プロセスに改良した後で確認する）
+
+*** 練習問題 1.3.1
+**** 練習問題 1.29
+
+回答
+#+begin_src scheme
+;; just in case
+(define (cube x) (* x x x))
+(define (sum term a next b)
+  (if (> a b)
+      0
+      (+ (term a)
+         (sum term (next a) next b))))
+
+(define (simpson f a b n)
+  (if (even? n)
+      (simpson-inner f a b n)
+      (display "You should set n as an even number.")))
+(define (simpson-inner f a b n)
+  (define (s-term k) (f (+ a (* k (h-const a b n)))))
+;;  (display (s-term 0))
+;;  (display " ")
+;;  (display (s-term n))
+;;  (newline)
+  (* (* (h-const a b n) (/ 1 3.0))
+     (+ (s-term 0)
+        (s-term n)
+        (odd-sum f a b n (h-const a b n))
+        (even-sum f a b n (h-const a b n)))))
+(define (h-const a b n) (/ (- b a) n))
+(define (odd-sum f a b n h)
+  (define (term k) (f (+ a (* k h))))
+  (define (next x) (+ x 2))
+  (* 4 (sum term 1 next (- n 1))))
+(define (even-sum f a b n h)
+  (define (term k) (f (+ a (* k h))))
+  (define (next x) (+ x 2))
+  (* 2 (sum term 2 next (- n 2))))
+
+;; 実行例
+(simpson cube 0 1 10)
+> 0.25 ;; 精度が小さくなってしまった。。なんでだろう
+#+end_src
+
+実行結果の比較
+#+begin_src scheme
+(simpson cube 0 1 100)
+0.25000000000000006
+
+>(integral cube 0 1 0.01)
+0.24998750000000042
+
+;; 0.25からの誤差
+(- 0.25 (simpson cube 0 1 100))
+-5.551115123125783E-17
+
+>(- 0.25 (integral cube 0 1 0.01))
+1.249999999958229E-5
+
+;; 結果: Simpsonの公式の方が12桁程精度が高い
+#+end_src
+
+***** デバッグメモ
+
+- even-sumのハンドデバッグ
+#+begin_src scheme
+(even-sum cube 0 1 10 0.1)
+(* 2 (sum term 2 next 8))
+(* 2 (+ (cube (+ 0 (* 2 0.1))) (sum term 4 next 8)))
+(* 2 (+ (cube (+ 0 (* 2 0.1))) (+ (cube (+ 0 (* 4 0.1))) (sum term 6 next 8))))
+(* 2 (+ (cube (+ 0 (* 2 0.1))) (+ (cube (+ 0 (* 4 0.1))) (+ (cube (+ 0 (* 6 0.1))) (sum term 8 next 8)))))
+(* 2 (+ (cube (+ 0 (* 2 0.1))) (+ (cube (+ 0 (* 4 0.1))) (+ (cube (+ 0 (* 6 0.1))) (+ (cube (+ 0 (* 8 0.1))) (sum term 10 next 8))))))
+(* 2 (+ (cube (+ 0 (* 2 0.1))) (+ (cube (+ 0 (* 4 0.1))) (+ (cube (+ 0 (* 6 0.1))) 0.512))))
+(* 2 (+ (cube (+ 0 (* 2 0.1))) (+ (cube (+ 0 (* 4 0.1))) (+ 0.216 0.512))))
+(* 2 (+ (cube (+ 0 (* 2 0.1))) (+ 0.064 0.728)))
+(* 2 (+ 0.008 0.792))
+(* 2 0.8)
+1.6 ;; ハンドでバッグ上は問題なさそう
+#+end_src
+
+- displayをつけてsumの呼び出しを表示してみる
+#+begin_src scheme
+(define (sum term a next b)
+  (display "sum ")
+  (display a)
+  (display " ")
+  (display b)
+  (newline)
+  (if (> a b)
+      0
+      (+ (term a)
+         (sum term (next a) next b))))
+(define (even-sum f a b n h)
+  (define (term k) (f (+ a (* k h))))
+  (define (next x) (+ x 2))
+  (* 2 (sum term 2 next (- n 2))))
+
+;; 実行結果
+>(even-sum cube 0 1 10 0.1)
+sum 2 8
+sum 4 8
+sum 6 8
+sum 8 8
+sum 10 8
+1.6000000000000005 ;; 期待どおり
+#+end_src
+
+**** 練習問題 1.30
+
+#+begin_src scheme
+;; 定義の雛形
+(define (sum term a next b)
+  (define (iter a result)
+    (if <??>
+        <??>
+        (iter <??> <??>)))
+  (iter <??> <??>))
+#+end_src
+
+回答
+#+begin_src scheme
+;; sumの反復プロセス版
+(define (sum term a next b)
+  (define (iter a result)
+    (if (> a b)
+        result
+        (iter (next a) (+ result (term a)))))
+  (iter a 0))
+#+end_src
+
+確認
+#+begin_src scheme
+;; Simpson's rule の計算
+(simpson cube 0 1 100)
+0.24999999999999997
+
+(simpson cube 0 1 1000)
+0.25
+
+(simpson cube 0 1 10000)
+0.25000000000000017
+
+(simpson cube 0 1 100000)
+0.24999999999999933
+
+;; integralでの計算
+(integral cube 0 1 0.01)
+0.24998750000000042
+
+(integral cube 0 1 0.001) ;; 以降は再帰プロセスではStack overflowだった
+0.24999987500000073
+
+(integral cube 0 1 0.0001)
+0.24999999874993337
+
+(integral cube 0 1 0.00001)
+0.2499999999866347
+#+end_src
+
+**** 練習問題 1.31
+- a)
+#+begin_src scheme
+;; product 反復プロセス版
+(define (product term a next b)
+  (define (iter a result)
+    (if (> a b)
+        result
+        (iter (next a) (* result (term a)))))
+  (iter a 1))
+#+end_src
+
+factorialの定義
+#+begin_src scheme
+(define (fact n)
+  (define (fterm x) x)
+  (define (fnext x) (+ x 1))
+  (product fterm 1 fnext n))
+#+end_src
+
+factorialの動作確認
+#+begin_src scheme
+>(fact 1)
+1
+
+>(fact 2)
+2
+
+>(fact 3)
+6
+
+>(fact 4)
+24
+
+>(fact 5)
+120
+
+>(fact 10)
+3628800
+#+end_src
+
+$\pi$ の近似値計算
+#+begin_src scheme
+;; This equals to pi / 2 as the original (not pi / 4)
+;;(define (wallis n)
+;;  (define (wnext x) (+ n 1))
+;;  (define (wterm x) 
+;;    (* (/ (* 2.0 x) (- (* 2.0 x) 1))
+;;       (/ (* 2.0 x) (+ (* 2.0 x) 1))))
+;;  (product wterm 1 wnext n))
+(define (wallis n)
+  (/ (numerator n) (denominator n)))
+
+(define (numerator n)
+  (define (nnext x) (+ x 1))
+  (define (nterm x)
+    (* 4 (* x x)))
+  (product nterm 1 nnext n))
+(define (denominator n)
+  (define (dnext x) (+ x 1))
+  (define (dterm x)
+    (- (* 4 (* x x)) 1))
+  (product dterm 1 dnext n))
+;; piの近似値
+(define (approx-pi n)
+  (* 2.0 (wallis n)))
+#+end_src
+
+- b)
+
+productの再帰プロセス版
+#+begin_src scheme
+(define (product term a next b)
+  (if (> a b)
+      1
+      (* (term a)
+         (product term (next a) next b))))
+#+end_src
+
+**** 練習問題 1.32
+
+a) accumulateの再帰プロセス版と反復プロセス版
+#+begin_src scheme
+;; accumulate 再帰プロセス版
+(define (accumulate combiner null-value term a next b)
+  (if (> a b)
+      null-value
+      (combiner (term a) (accumulate combiner null-value term (next a) next b))))
+
+;; accumulate 反復プロセス版
+(define (accumulate combiner null-value term a next b)
+  (define (iter a result)
+    (if (> a b)
+        result
+        (iter (next a) (combiner result (term a)))))
+  (iter a null-value))
+#+end_src
+
+sumとproductのaccumulate呼び出し版
+#+begin_src scheme
+;; sum with accumulate
+;;(define (sum term a next b)
+;;  (define (sum-comb term-val accumulated) (+ term-val accumulated))
+;;  (accumulate sum-comb 0 term a next b))
+(define (sum term a next b)
+    (accumulate + 0 term a next b))
+
+;; product with accumulate
+;;(define (product term a next b)
+;;  (define (prod-comb term-val accumulated) (* term-val accumulated))
+;;  (accumulate prod-comb 1 term a next b))
+(define (product term a next b)
+  (accumulate * 1 term a next b))
+#+end_src
+
+動作チェック
+#+begin_src scheme
+(define (id x) x)
+(define (add-one x) (+ x 1))
+(sum id 1 add-one 10)
+55
+
+(product id 1 add-one 10)
+3628800
+#+end_src
+
+hand debugging (再帰プロセス版)
+#+begin_src scheme
+(sum id 1 add-one 5)
+(accumulate sum-comb 0 id 1 add-one 5)
+(sum-comb 1 (accumulate sum-comb 0 id 2 5))
+(sum-comb 1 (sum-comb 2 (accumulate sum-comb 0 id 3 add-one 5)))
+(sum-comb 1 (sum-comb 2 (sum-comb 3 (accumulate sum-comb 0 id 4 add-one 5))))
+(sum-comb 1 (sum-comb 2 (sum-comb 3 (sum-comb 4 (accumulate sum-comb 0 id 5 add-one 5)))))
+(sum-comb 1 (sum-comb 2 (sum-comb 3 (sum-comb 4 (sum-comb 5 (accumulate sum-comb 0 id 6 add-one 5))))))
+(sum-comb 1 (sum-comb 2 (sum-comb 3 (sum-comb 4 (sum-comb 5 0)))))
+(sum-comb 1 (sum-comb 2 (sum-comb 3 (sum-comb 4 5))))
+(sum-comb 1 (sum-comb 2 (sum-comb 3 9)))
+(sum-comb 1 (sum-comb 2 12))
+(sum-comb 1 14)
+15
+#+end_src
+
+**** 練習問題 1.33
+
+filtered-accumulate
+#+begin_src scheme
+;; 初期値のa,bが すでに a > b の場合null-valueを返すとする
+(define (filtered-accumulate filtered? combiner null-value term a next b)
+  (define (iter a result)
+    (if (> a b)
+        result
+	(if (filtered? a)
+            (iter (next a) (combiner result (term a)))
+            (iter (next a) result))))
+  (iter a null-value))
+#+end_src
+
+動作確認
+#+begin_src scheme
+(define (sum filtered? term a next b)
+  (define (sum-comb term-val accumulated) (+ term-val accumulated))
+  (filtered-accumulate filtered? sum-comb 0 term a next b))
+
+;; 範囲内にある偶正数の合計
+(sum even? (lambda (x) x) 1 (lambda (x) (+ x 1)) 10)
+> 30 (= 2 + 4 + 6 + 8 + 10)
+
+(sum even? (lambda (x) x) 1 (lambda (x) (+ x 1)) 9)
+> 20 (= 2 + 4 + 6 + 8)
+
+(sum (lambda (x) (not (even? x))) (lambda (x) x) 1 (lambda (x) (+ x 1)) 10)
+> 25  (= 1 + 3 + 5 + 7 + 9)
+
+(sum (lambda (x) (not (even? x))) (lambda (x) x) 1 (lambda (x) (+ x 1)) 15)
+> 64 (= 1 + 3 + 5 + 7 + 9 + 11 + 13 + 15)
+#+end_src
+
+- a) aからbの区間の素数の二乗の和（すでにprime?述語を書いているとする）
+
+prime?述語 (from 1.2.6)
+#+begin_src scheme
+
+#+end_src
+
+#+begin_src scheme
+;; 補助手続き: prime? (from 1.2.6)
+(define (prime? n)
+  (define (smallest-divisor n) (find-divisor n 2))
+  (define (find-divisor n test-divisor)
+    (cond ((> (square test-divisor) n) n)
+          ((divides? test-divisor n) test-divisor)
+          (else (find-divisor n (+ test-divisor 1)))))
+  (define (divides? a b) (= (remainder b a) 0))
+  (define (square n) (* n n))
+  (= n (smallest-divisor n)))
+
+;; 回答
+(define (fa a b)
+  (define (faterm x) (* x x))
+  (define (fanext x) (+ x 1))
+  (define (sum-comb term-val accumulated) (+ term-val accumulated))
+  (filtered-accumulate prime? sum-comb 0 faterm a fanext b))
+#+end_src
+
+動作確認
+#+begin_src scheme
+> (fa 1 10)
+88 (= 1^2 + 2^2 + 3^2 + 5^2 + 7^2 = 88)
+
+> (fa 5 10)
+74 (= 5^2 + 7^2 = 74)
+
+h> (fa 1 20)
+1028
+#+end_src
+
+
+- b) nと互いに素であるn未満の全ての正の整数（つまり、GCD(i, n) = 1 となるすべての整数 i<n）の積
+#+begin_src scheme
+;; 補助手続き: gcd (from 1.2.5)
+(define (gcd a b)
+  (if (= b 0)
+      a
+      (gcd b (remainder a b))))
+
+;; 回答
+(define (fb n)
+  (define (fbterm x) x)
+  (define (fbnext x) (+ x 1))
+  (define (prod-comb term-val accumulated) (* term-val accumulated))
+  (define (relatively-prime? x) (= (gcd x n) 1))
+  (filtered-accumulate relatively-prime? prod-comb 1 fbterm 1 fbnext n))
+#+end_src
+
+動作確認
+#+begin_src scheme
+> (fb 10)
+189
+> (* 1 3 7 9)
+189
+
+> (fb 20)
+8729721
+> (* 1 3 7 9 11 13 17 19)
+8729721
+#+end_src
+
+
+** 1.3.2 lambdaを使って手続きを構築する
+
+- lambdaは特殊形式
+- lambdaを使えば一時的に使いたい手続きを作るときにわざわざ名前等を考慮
+  して関数定義を作る必要がなくなる
+- sumのときのpi-termやpi-nextはそれぞれ以下のように書ける
+  - pi-next (入力に4をたしたものを返す手続き)
+    #+begin_src scheme
+    (lambda (x) (+ x 4))
+    #+end_src
+  - pi-term (入力と入力に2を足したものの積の逆数を返す手続き)
+    #+begin_src scheme
+    (lambda (x) (/ 1.0 (* x (+ x (+ x 2)))))
+    #+end_src
+
+lambdaを使ったpi-sum手続きの定義
+#+begin_src scheme
+;; sum (iteration)
+(define (sum term a next b)
+  (define (iter a result)
+    (if (> a b)
+        result
+        (iter (next a) (+ result (term a)))))
+  (iter a 0))
+
+;; pi-sum
+(define (pi-sum a b)
+  (sum (lambda (x) (/ 1.0 (* x (+ x 2))))
+       a
+       (lambda (x) (+ x 4))
+       b))
+#+end_src
+
+同様に、integral手続きも補助手続きのadd-dxを定義しないで書ける
+#+begin_src scheme
+(define (integral f a b dx)
+  (* (sum f
+          (+ a (/ dx 2.0))
+          (lambda (x) (+ x dx))
+          b)
+     dx))
+#+end_src
+
+- lambdaの書式
+#+begin_src scheme
+(lambda (<formal-parameters>) <body>)
+#+end_src
+
+- 作られる手続きは環境の中で名前と関連付けられていないのがdefineによっ
+  て作られる手続きとの違い
+
+以下は等しい
+#+begin_src scheme
+;; これと
+(define (plus4 x) (+ x 4))
+
+;; これは等しい
+(define plus4 (lambda (x) (+ x 4)))
+#+end_src
+
+
+lambdaは次のように複合式の中で演算子として使うことが出来る
+#+begin_src scheme
+((lambda (x y z) (+ x y (square z)))
+ 1 2 3)
+12 
+#+end_src
+
+より一般的にいうと、手続き名を使うようなどんな文脈でも使える
+
+*** letを使って局所変数を作る
+
+- lambdaの別の使い方として、 *局所変数* を作るというものがある。
+  - 手続きの中で、仮引数として束縛されたもの以外の局所変数を使いたいと
+    き等に使う
+
+例): 次の計算をしたいとする
+#+begin_latex
+$ f(x,y) = x(1+xy)^2+y(1-y)+(1+xy)(1-y) $
+#+end_latex
+[[./img/1-3-2-001.png]]
+
+これは以下のようにも表現できる
+#+begin_latex
+\begin{align*}
+a &= 1+xy,   \\
+b &= 1-y,    \\
+f(x,y) &= xa^2+yb+ab.
+\end{align*}
+#+end_latex
+[[file:./img/1-3-2-002.png]]
+
+このとき、xとy（仮引数での束縛変数）だけでなく、aやbといった計算仮定の
+値の名前も局所変数として持っておきたい。lambdaを使わない方法と使う方法
+が示されている。
+
+*lambdaを使わない方法* 以下は局所変数を束縛するために補助手続きを使う
+#+begin_src scheme
+;; just in case
+(define (square x) (* x x))
+
+(define (f x y)
+  (define (f-helper a b)
+    (+ (* x (square a))
+       (* y b)
+       (* a b)))
+  (f-helper (+ 1 (* x y))
+            (- 1 y)))
+#+end_src
+
+*lambdaを使う方法* lambda式を使って局所変数を束縛する無名手続きを指定する
+- fの本体はその手続きの呼び出し一つだけで済む
+#+begin_src scheme
+(define (f x y)
+  ((lambda (a b)
+     (+ (* x (square a))
+        (* y b)
+        (* a b)))
+   (+ 1 (* x y))
+   (- 1 y)))
+#+end_src
+
+この概念は便利なので、 ~let~ という特殊形式でさらに手軽に使えるようになっている。
+#+begin_src scheme
+;; letを使ったfの定義
+(define (f x y)
+  (let ((a (+ 1 (* x y)))
+        (b (- 1 y)))
+    (+ (* x (square a))
+       (* y b)
+       (* a b))))
+#+end_src
+
+**** letの一般形式
+#+begin_src scheme
+(let ((<var1> <exp1>)
+      (<var2> <exp2>)
+      ...
+      (<varn> <expn>))
+  <body>)
+#+end_src
+これは次のように考えることも出来る
+#+begin_src scheme
+let <var1> have the value <exp1> and
+    <var2> have the value <exp2> and
+    ...
+    <varn> have the value <expn>
+in  <body>
+;; <body>の中で<var1>は<exp1>の値を持ち、<var2>は<exp2>の値を持ち、...、 <varn>は<expn>の値を持つ
+#+end_src
+- letが評価されるとき、それぞれの名前は対応する式の値と関連付けられる
+- letの本体は、これらの名前が局所変数として束縛された状態で評価される
+
+let式は以下のlambda式と等価（のはず）
+#+begin_src scheme
+((lambda (<var1> ... <varn>)
+   <body>)
+ <exp1>   ;; <var1> に束縛される
+ ...
+ <expn>)  ;; <varn> に束縛される
+#+end_src
+lambda式が手続きの演算子になっていて、そこに<exp1> ... <expn> を引数と
+して適用する。すると各<expi>はlambda式の仮引数<vari>に束縛され、その状
+態で<body>が評価される。
+
+局所変数を提供するのに、インタプリタの新しい仕組みは必要なく、 ~let~
+式はその裏にある ~lambda~ 適用に対するシンタックスシュガーに過ぎない。
+
+この等価関係からlet式で指定された変数のスコープがletの本体であるという
+ことが分かる。つまり次のことがいえる。
+- letを使うと変数を可能な限り局所的に使用箇所に束縛出来る
+- 変数の値はletの外側で計算される
+
+letと同じ結果を得るために内部定義が使える
+#+begin_src scheme
+;; 手続きfの内部定義版
+(define (f x y)
+  (define a (+ 1 (* x y)))
+  (define b (- 1 y))
+  (+ (x (square a))
+     (* y b)
+     (* a b)))
+#+end_src
+でもこのような状況ではletを使い、defineは内部手続きの定義に限定して使うようにしている
+- (引田メモ)
+  - 「defineは内部手続きの定義に限定して使う」は今の時点では意味不明だ
+    が、4.1.6節で評価について学ぶとちゃんと理解出来るようになるらしい
+
+*** 練習問題
+**** 練習問題 1.34
+#+begin_src scheme
+(define (f g) (g 2))
+#+end_src
+
+で ~(f f)~ を実行したらどうなるか？
+
+回答: (f f) -> (f 2) -> (2 2) となり、手続き2というのは定義されていないのでエラーとなる。
+確認(by gauche)
+#+begin_src scheme
+gosh> (define (square x) (* x x))
+gosh> (f f)
+*** ERROR: invalid application: (2 2)
+Stack Trace:
+_______________________________________
+  0  (eval expr env)
+        at "/usr/local/Cellar/gauche/0.9.9/share/gauche-0.97/0.9.9/lib/gauche/interactive.scm":269
+gosh>
+#+end_src
+予想通り。
+
+** 1.3.3 汎用手法としての手続き
+
+1.1.4節では、数値計算のパターンを抽象化するメカニズムとしての複合手続
+きの導入し、パターンを特定の数値から独立したものにした。
+
+1.3.1節では、高階手続きを使ったより強力な抽象化による、特定の関数か
+ら独立した計算の汎用手法を表現するために使われる手続きをみてきた。
+
+この節では
+- 関数の零点と不動点を見つける汎用手法について検討し
+- これらが手続きとして直接表現出来るということを示す
+
+*** 区間二分法(half-interval method)によって方程式の根を求める
+
+*区間二分法*
+- fという連続関数について方程式 f(x)=0 の根を求めるための単純ながら協力なテクニック
+- 考え方
+  - f(a)<0<f(b) となる点aとbがあるとき、fはaとbの間に少なくとも1つの零点を持つ
+- 零点を特定する手順
+  - aとbの平均をxとしてf(x)を計算する
+  - もし f(x)>0 なら、fはaとxの間に零点をもち、 もし f(x)<0 なら、fはxとbの間に零点をもつ
+  - この方法により、fが零点を持つ区間をどんどん狭めていき、区間が十分狭くなったら処理を停止する
+- 必要なステップ数の増加オーダー
+  - 不確定区間は各ステップ毎に半分に縮まっていくので、元の区間の長さを
+    L、許容誤差をTとして $\Theta(\log(L/T))$ になる
+
+区間二分法の実装は以下の通り
+#+begin_src scheme
+;; averageはgoshで定義されていないので追加
+(define (average x y) (/ (+ x y) 2.0))
+
+(define (search f neg-point pos-point)
+  (let ((midpoint (average neg-point pos-point)))
+    (if (close-enough? neg-point pos-point)
+        midpoint
+        (let ((test-value (f midpoint)))
+          (cond ((positive? test-value)
+                 (search f neg-point midpoint))
+                ((negative? test-value)
+                 (search f midpoint pos-point))
+                (else midpoint))))))
+(define (close-enough? x y) (< (abs (- x y)) 0.001))
+#+end_src
+    
+Searchを直接使うと引数チェック等が出来ないので、ラッピングして完成版とする。
+#+begin_src scheme
+(define (half-interval-method f a b)
+  (let ((a-value (f a))
+        (b-value (f b)))
+    (cond ((and (negative? a-value) (positive? b-value))
+           (search f a b))
+          ((and (negative? b-value) (positive? a-value))
+           (search f a b))
+          (else 
+            (error "Values are not of opposite sign" a b)))))
+#+end_src
+
+$\pi$ の近似に区間二分法を使ってsin(x)=0 の2と4の間にある根として求めている。
+#+begin_src scheme
+gosh> (half-interval-method sin 2.0 4.0)
+2.00048828125 ;; 精度が悪い。。なんで？
+#+end_src
+
+もう一つの例（x^3-2x-3=0の、1から2の間の根を探す）
+#+begin_src scheme
+gosh> (half-interval-method (lambda (x) (- (* x x x) (* 2 x) 3)) 1.0 2.0)
+1.89306640625 ;; こちらはSICPと同じ結果。
+#+end_src
+- （引田コメント）
+  - なんで $\pi$ の近似のときは誤差が大きいんだ？
+  - goshのsinの仕様が影響している？
+
+*** 関数の不動点を求める
+
+- *不動点(fixed point)*
+  - 数値xが方程式 f(x)=x を満たすとき、xは関数fの不動点と呼ばれる
+
+関数fによっては最初の推定値から始めて、値があまり変わらなくなるまでfを
+繰り返し適用していくというやり方で不動点を求めることが出来る。
+
+f(x), f(f(x)), f(f(f(x))), ...
+
+関数と初期推定値を入力としてその関数の不動点の近似値を生成する手続き
+#+begin_src scheme
+(define tolerance 0.00001)
+(define (fixed-point f first-guess)
+  (define (close-enough? v1 v2)
+    (< (abs (- v1 v2))
+       tolerance))
+  (define (try guess)
+    (let ((next (f guess)))
+      (if (close-enough? guess next)
+          next
+          (try next))))
+  (try first-guess))
+#+end_src
+
+実行結果
+#+begin_src scheme
+gosh> (fixed-point cos 1.0)
+0.7390822985224023
+#+end_src
+
+もう一つの例: y = sin(y) + cos(y)
+#+begin_src scheme
+gosh> (fixed-point (lambda (y) (+ (sin y) (cos y))) 1.0)
+1.2587315962971173
+#+end_src
+
+
+1.1.7節で行った平方根の計算は不動点探索として形式化できる。
+
+ある数値xの平方根を求めるには
+- y^2 = x となるようなyを探す必要がある。
+- この方程式は y = x/y と等価であり、
+- 求めるものは λy.(x/y) (SICPでは y |-> x/y)の不動点となる
+
+なので平方根の計算は以下のように書くことが出来そう。
+#+begin_src scheme
+(define (sqrt x)
+  (fixed-point (lambda (y) (/ x y))
+               1.0))
+#+end_src
+
+でも実際はこの不動点探索は収束しない。
+#+begin_src scheme
+gosh> (sqrt 2)
+;; 30分以上実行しても応答が帰ってこない
+#+end_src
+
+解の振動をコントロールする方法のひとつとして、推測値の大きな変化を防ぐ
+ための *平均緩和法(average damping)* という技法が使われることがある。
+平方根の例では、答えは常に推測値yと x/y の間にあるはずなので、yとx/yの
+平均を取ることで、新しい推測値をyからもx/yからもあまり遠くないものにで
+きる。つまり、yの次の推測値は $\frac{1}{2}(y+x/y)$ となる。平均緩和法
+を用いた平方根計算は以下のようになる。
+#+begin_src scheme
+(define (sqrt x)
+  (fixed-point (lambda (y) (average y (/ x y)))
+               1.0))
+(define (average x y) (/ (+ x y) 2.0))
+#+end_src
+
+計算結果
+#+begin_src scheme
+gosh> (sqrt 2)
+1.4142135623746899
+gosh> (sqrt 4)
+2.000000000000002
+gosh> (sqrt 10)
+3.162277660168379
+#+end_src
+
+- (引田所感)
+  - 不動点はある定数を数値計算的に求めたいときに使えそう
+  - それ以外だとどんなときに用いられるのだろうか？
+
+*** 練習問題
+**** 練習問題 1.35
+
+黄金比φは1:φのことであり、定数である。また$\phi^2 = \phi + 1$ という関
+係性があり(1.2.2節より)、黄金比はこのφを求めることである。ここでφをxに
+置き換え、両辺をxで割ると、 $x = 1 + 1/x$ となり、 これは$x |-> 1 +
+1/x$ の不動点を求めることと等価である。
+
+#+begin_src scheme
+(define (golden-ratio init)
+  (fixed-point (lambda (x) (+ 1 (/ 1 x)))
+               init))
+#+end_src
+
+動作確認
+#+begin_src scheme
+gosh> (golden-ratio 1.0)
+1.6180327868852458 ;; 小数点第四位までの精度はたしかにある
+#+end_src
+
+**** 練習問題 1.36
+
+#+begin_src scheme
+;; 修正版fixed-point
+(define tolerance 0.00001)
+(define (fixed-point f first-guess)
+  (define (close-enough? v1 v2)
+    (< (abs (- v1 v2))
+       tolerance))
+  (define (try guess)
+    (let ((next (f guess)))
+      (display next)
+      (newline)
+      (if (close-enough? guess next)
+          next
+          (try next))))
+  (try first-guess))
+
+#+end_src
+
+$x^x = 1000$ の解を求める手続き
+#+begin_src scheme
+(define (sqsq)
+  (fixed-point (lambda (x) (/ (log 1000) (log x)))
+               2.718281))
+#+end_src
+
+平均緩和法とのステップ数の比較
+#+begin_src scheme
+;; 平均緩和法
+(define (average x y) (/ (+ x y) 2.0))
+(define (avg-sqsq)
+  (fixed-point (lambda (x) (average x (/ (log 1000) (log x)))) 
+               2.718281))
+#+end_src
+
+#+begin_src scheme
+;; 平均緩和法でない版, 近似値計算: 34回
+gosh> (sqsq)
+6.907757384280748
+3.5742493529319956
+5.423142038412205
+4.08579638941776
+4.9077609212362425
+4.342266738462531
+4.704284756073436
+4.46100898212679
+4.619413471074969
+4.5140827883472925
+4.583164827164797
+4.537441998149628
+4.567523389257397
+4.547654094465858
+4.560743929596858
+4.552105525078669
+4.557799821777122
+4.554043422479838
+4.556520211741313
+4.554886604147087
+4.555963845957749
+4.555253385115935
+4.555721903398768
+4.555412916773457
+4.555616684398732
+4.555482302022142
+4.555570924069893
+4.555512479212615
+4.555551022387737
+4.555525603831807
+4.55554236687287
+4.555531311950416
+4.555538602461275
+4.555538602461275
+
+;; 平均緩和法, 近似値計算: 9回
+gosh> (avg-sqsq)
+4.8130191921403735
+4.6045771933834505
+4.5640846840072395
+4.5569973682003155
+4.555784746193098
+4.555578111953494
+4.555542925492328
+4.555536934522468
+4.555536934522468
+#+end_src
+
+平均緩和法は近似値計算の回数を73%少なくできている。
+
+**** 練習問題 1.37
+
+*a.*
+#+begin_src scheme
+;; cont-frac 再帰プロセス版. w/o lambda or let
+(define (cont-frac n d k)
+  (define (recr n d i b)
+    (if (> i b)
+        (/ (n i) (d i))
+        (/ (n i) (+ (d i) (recr n d (+ i 1) b)))))
+  (recr n d 1 k))
+#+end_src
+
+k項有限連分数
+#+begin_src scheme
+(define (test1.37 k)
+  (cont-frac (lambda (i) 1.0)
+             (lambda (i) 1.0)
+             k))
+#+end_src
+
+$1 / \phi$ の近似値計算
+#+begin_src scheme
+;; 最初に golden-ratio で精度が少数第4位までの$\phi$による $1 / \phi$ を計算しておく
+(/ 1 (golden-ratio 1.0))
+0.6180344478216819
+
+;; test1.37 で cont-fracのパラメータkを変えて近似値の変化を調べる
+(test1.37 1)
+0.5
+(test1.37 5)
+0.6153846153846154
+(test1.37 9)
+0.6179775280898876
+(test1.37 10)
+0.6180555555555556 ;; k=10で小数点第四位までの精度の近似値が得られる
+(test1.37 100)
+0.6180339887498948 ;; おまけ。k=100だと小数点第三位までの近似値が得られる
+#+end_src
+
+*b.*
+
+上記は再帰プロセスだったので、今度は反復プロセスで書く
+#+begin_src scheme
+;; cont-frac 反復プロセス版. w/o lambda or let
+(define (cont-frac n d k)
+  (define (try n d i result)
+    (if (> i k)
+        result
+        (try n d (+ i 1) (/ (n i) (+ (d i) result)))))
+  (try n d 1 (/ (n 1) (d 1)))) ;; ni, diをletで算出する書き方が必要。
+#+end_src
+
+**** 練習問題 1.38
+
+- [[https://codology.net/post/sicp-solution-exercise-1-38/][SICP - Solution: Exercise 1.38]] を参考にした
+
+Diを求める手続き ~euler-cf~ とその出力列を確認するための ~disp-cf~ 
+#+begin_src scheme
+;; euler-cf
+(define (euler-cf i)
+  (if (= (mod i 3) 2)
+      (* 2 (/ (+ i 1) 3))
+      1))
+
+;; disp-cf
+(define (disp-cf f n)
+  (define (rec i)
+    (display (f i))
+    (display ", ")
+    (if (> i n)
+      (newline)
+      (rec (+ i 1))))
+  (rec 1))
+
+;; 出力例
+gosh> (disp-cf euler-cf 20)
+1, 2, 1, 1, 4, 1, 1, 6, 1, 1, 8, 1, 1, 10, 1, 1, 12, 1, 1, 14, 1,
+#<undef>
+#+end_src
+
+これとcont-fracを使ってeの近似を計算する
+#+begin_src scheme
+(define (test1.38 i)
+  (+ 2 (cont-frac (lambda (x) 1.0)
+                  euler-cf
+                  i)))
+#+end_src
+
+動作確認
+#+begin_src scheme
+gosh> (test1.38 1)
+2.6666666666666665
+gosh> (test1.38 5)
+2.717948717948718
+gosh> (test1.38 9)
+2.7182817182817183  ;; 小数点第四位までの精度なら i=9 で十分
+gosh> (test1.38 10)
+2.7182818352059925
+#+end_src
+
+**** 練習問題 1.39
+
+- Niは
+  - x if i=1
+  - -x^2 others
+- Diは
+  - 2i-1 (つまり奇数)
+なので、以下のようになる。
+#+begin_src scheme
+;; supplement
+(define (square x) (* x x))
+(define (tan-cf x k)
+  (cont-frac (lambda (i) (if (= i 1) x (* -1.0 (square x))))
+             (lambda (i) (- (* 2.0 i) 1))
+             k))
+#+end_src
+
+動作確認
+#+begin_src scheme
+;; tan 1.0
+gosh> (tan 1.0)
+1.557407724654902
+;; tan-cf 1.0 k
+gosh> (tan-cf 1.0 1)
+1.4999999999999998
+gosh> (tan-cf 1.0 5)
+1.557407722401769
+gosh> (tan-cf 1.0 7)
+1.557407724654856
+gosh> (tan-cf 1.0 8) ;; k=8 でgauche処理系と同じ値になった
+1.557407724654902
+
+;; tan 2.0
+gosh> (tan 2.0)
+-2.185039863261519
+;; tan-cf 2.0 k
+gosh> (tan-cf 2.0 1)
+-6.000000000000002
+gosh> (tan-cf 2.0 5)
+-2.1850643117680937
+gosh> (tan-cf 2.0 7)
+-2.185039871780394
+gosh> (tan-cf 2.0 8)
+-2.185039863369829
+gosh> (tan-cf 2.0 9)
+-2.1850398632626273
+gosh> (tan-cf 2.0 10)
+-2.1850398632615287
+gosh> (tan-cf 2.0 11) ;; k=11 で処理系と同じ値になった
+-2.185039863261519
+#+end_src
+
+
+** 1.3.4 返り値としての手続き
+
+- 手続きを引数として渡す能力はプログラミング言語の表現力を大幅に拡張するということを見てきた
+  - (*引田所感*) 具体的な表現力の拡張はどれかはまだはっきり認識出来ていない
+- 返り値自身が手続きであるような手続きを作成することで表現力をさらに協力に出来る
+
+例) 平方根を不動点探索により定式化して求めた (1.3.3節)。平均緩和法の考
+え方は次の手続きによって表現可能
+
+#+begin_src scheme
+;; just in case
+(define (average x y) (/ (+ x y) 2.0))
+;; average-damp
+(define (average-damp f)
+  (lambda (x) (average x (f x))))
+#+end_src
+- これは引数として手続きfをとり、（lambdaで生成された）手続きを返り値
+  とする手続き。
+- 返り値となる手続きは、数値xに適用するとxと(f x)の平均を返すというもの
+
+動作例: xに10を渡すと 10と100の平均を返す
+#+begin_src scheme
+;; 補助
+(define (square x) (* x x))
+
+;; xに10を渡すと 10と100の平均を返す
+((average-damp square) 10)
+55.0
+#+end_src
+
+例2) average-dampを使った平方根手続き
+#+begin_src scheme
+;; fixed-point (just in case)
+(define tolerance 0.00001)
+(define (fixed-point f first-guess)
+  (define (close-enough? v1 v2)
+    (< (abs (- v1 v2))
+       tolerance))
+  (define (try guess)
+    (let ((next (f guess)))
+      (if (close-enough? guess next)
+          next
+          (try next))))
+  (try first-guess))
+
+;; sqrt. 
+(define (sqrt x)
+  (fixed-point (average-damp (lambda (y) (/ x y)))
+               1.0))
+#+end_src
+この（=平方根の）定式化はこの手法の三つの考え方を明確に示している。
+- 不動点探索: fixed-point
+- 平均緩和法: average-damp
+- 関数 y |-> x/y: lambda式
+
+*TODO* 1.1.7節の元バージョンと比べてみる
+- 新しい定式化の方が、考え方がより明確に表現されているように理解できる
+  （といっている？）
+
+このような抽象化を用いると、他のアプリケーションで再利用しやすくなる。
+例としてxの三乗根（y |-> x/y^2 の不動点探索）へ応用してみると、
+#+begin_src scheme
+(define (cube-root x)
+  (fixed-point (average-damp (lambda (y) (/ x (square y))))
+               1.0))
+
+;; 動作確認
+gosh> (cube-root 2)
+1.259923236422975
+gosh> (* 1.259923236 1.25992323 1.25992323)
+2.0000103916459193 ;; ほぼ2なので確かに三乗根の近似値となっている
+#+end_src
+
+*** ニュートン法
+
+x |-> g(x) が微分可能な関数であるとき、方程式 ~g(x)=0~ の解は、以下に
+示す関数 x |-> f(x) の不動点となる
+#+BEGIN_SRC latex
+\[ f(x) = x - \frac{g(x)}{Dg(x)} \]
+#+END_SRC
+[[./img/1-3-4-001.png]]
+
+ここで、Dg(x)はgの導関数をxで評価したもの
+
+ニュートン法を手続きと実装するにはまず微分という考え方を表現する。一般
+的に、gが関数でdxが小さな値であるとき、gを微分したDgは、任意の数値xに
+おける値が（dxを極小にしたときに）次のようになる関数
+#+BEGIN_SRC latex
+\[ Dg(x) = \frac{g(x + dx) - g(x)}{dx} \]
+#+END_SRC
+[[./img/1-3-4-002.png]]
+
+微分は以下のような手続きとして表現できる。
+#+BEGIN_SRC scheme
+(define (deriv g)
+  (lambda (x) (/ (- (g (+ x dx)) (g x)) dx)))
+(define dx 0.00001)
+#+END_SRC
+これはaverage-damp同様、手続きを引数にとり手続き返り値とする手続き
+
+#+BEGIN_SRC scheme
+;; x |-> x^3 を微分したもののx = 5での値
+(define (cube x) (* x x x))
+((deriv cube) 5)
+75.00014999664018
+#+END_SRC
+
+derivを使ってニュートン法を不動点探索プロセスとして表現可能
+#+BEGIN_SRC scheme
+(define (newton-transform g)
+  (lambda (x) (- x (/ (g x) ((deriv g) x)))))
+(define (newtons-method g guess)
+  (fixed-point (newton-transform g) guess))
+#+END_SRC
+
+
+平方根手続きをまた別の形で書ける。
+#+BEGIN_SRC scheme
+(define (sqrt x)
+  (newtons-method
+    (lambda (y) (- (square y) x)) 1.0))
+#+END_SRC
+
+動作チェック
+#+BEGIN_SRC scheme
+(sqrt 2)
+1.4142135623822438
+#+END_SRC
+
+*** 抽象化とファーストクラス手続き
+
+前節では平方根を不動点として計算する2つの方法をみた（不動点探索とニュー
+トン法）。どちらも *ある関数* から始め、 *その関数を変形したもの* の不
+動点を求める。この一般的な考え方自体を手続きとして表現できる
+#+BEGIN_SRC scheme
+(define (fixed-point-of-transform g transform guess)
+  (fixed-point (transform g) guess))
+#+END_SRC
+この手続きの引数は
+- *g*: 何らかの関数を計算する
+- *transform*: gを変形する手続き
+- *guess*: 初期推測値
+で、返り値は、変形された関数の不動点
+
+*ファーストクラス*
+- 一般的に、プログラミング言語は計算要素の操作方法に制約を課すもの
+- 制約が最も少ない要素は *ファーストクラス(first-class)* の地位をもつ
+  という
+- ファーストクラス要素の "権利と特権"の一部
+  - 変数によって名前をつけることができる
+  - 手続きに引数として渡せる
+  - 手続きの返り値になることができる
+  - データ構造に組み込むことができる（引田注: いまいちよく分からないが、第2章で詳しく議論するらしい）
+Lispは手続きに完全なファーストクラスの地位を与えている
+
+最初の平方根計算（y |-> x/y の平均緩和法バージョンに対して不動点を求める）の書き直し: 
+#+BEGIN_SRC scheme
+(define (sqrt x)
+  (fixed-point-of-transform
+    (lambda (y) (/ x y)) average-damp 1.0))
+
+#+END_SRC
+
+2つ名の平方根計算（y |-> y^2-x のニュートン変形の不動点を求める）の書き直し:
+#+BEGIN_SRC scheme
+(define (sqrt x)
+  (fixed-point-of-transform
+    (lambda (y) (- (square y) x)) newton-transform 1.0))
+#+END_SRC
+
+*** 番外編
+
+lambdaを使う以外で手続きを返すことはできないか？例えば普通にdefineで定
+義した場合等はどうなるだろう？
+
+#+BEGIN_SRC scheme
+(define (f g)
+  (define (h x) (g x)))
+
+;; 動作確認
+(define (add-one x) (+ 1 x))
+(f add-one)
+1 ;; 何故1になる？
+
+((f add-one) 2) ;; expected: 3
+*** ERROR: invalid application: (1 2) ;; やはり演算子部分に1が渡されている
+Stack Trace:
+_______________________________________
+  0  (eval expr env)
+        at "/usr/local/Cellar/gauche/0.9.9/share/gauche-0.97/0.9.9/lib/gauche/interactive.scm":269
+#+END_SRC
+
+*** 練習問題
+**** 練習問題 1.40
+
+#+BEGIN_SRC scheme
+;; 補助手続き
+(define (square x) (* x x))
+(define (cube x) (* x x x))
+
+;; cubric
+(define (cubic a b c)
+  (lambda (y) (+ (cube y) (* a (square y)) (* b y) c)))
+
+;; approx-cubric
+(define (approx-cubic a b c)
+  (newtons-method (cubic a b c) 1.0))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; a=b=c=0のとき、3次方程式はx^3に等しいので、その場合と比較する
+(newtons-method cube 1.0)
+2.6531990291797187e-5
+
+(approx-cubic 0 0 0)
+2.6531990291797187e-5 ;; 合っている
+
+
+;; 他の例でも試してみる
+a=b=c=1の場合
+(approx-cubic 1 1 1)
+-0.9999999999997796 ;; 合っているのか？
+#+END_SRC
+
+**** 練習問題 1.41
+
+#+BEGIN_SRC scheme
+(define (double f)
+  (lambda (x) (f (f x))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(define (inc x) (+ 1 x))
+((double inc) 1)
+3    ; (double inc) -> 2を足す手続きなので合っている
+((double inc) 1)
+13
+#+END_SRC
+
+(((double (double double)) inc) 5)はどんな値を返すか？
+
+まず (double double)はどんな結果になるか確認する
+#+BEGIN_SRC scheme
+(double double)
+(lambda (x) (double (double x)))
+#+END_SRC
+
+この手続きの返り値は何かを考える。ある手続きgを渡すと、
+#+BEGIN_SRC scheme
+((double double) g)
+((lambda (x) (double (double x))) g)
+(double (double g))
+(double (lambda (x) (g (g x))))
+(lambda (x) ((lambda (x) (g (g x))) ((lambda (x) (g (g x))) x)))
+#+END_SRC
+
+という手続きになる。これは1引数を受け取る関数である。ある値Aを渡すとすると、
+#+BEGIN_SRC scheme
+;; EXP 1
+(((double double) g) A)
+((lambda (x) ((lambda (x) (g (g x))) ((lambda (x) (g (g x))) x))) A)
+((lambda (x) (g (g x))) ((lambda (x) (g (g x))) A)))
+((lambda (x) (g (g x))) (g (g A))))
+(g (g (g (g A))))
+#+END_SRC
+となる。つまり、((double double) g)は、Aにgを4回適用した値を返す。
+
+(double (double double))も同様に考えられる。定義よりdoubleは引数の関数
+を2回適用するので、(double (double double))は(double double) を2回適用
+する。すなわち、((double (double double)) g)とした場合、gを4回適用する
+手続きをさらに2回適用するので、結局gを8回適用する手続きを返すことになる。
+
+つぎに(double (double double))がどういう結果になるかというと、
+#+BEGIN_SRC scheme
+(double (double double))
+(double (lambda (x) (double (double x))))
+(lambda (x) ((double double) ((double double) x)))
+#+END_SRC
+
+という1引数を受け取る手続きになる。これも先程と同様にある手続きgを渡すと、
+#+BEGIN_SRC scheme
+((double (double double)) g)
+((lambda (x) ((double double) ((double double) x))) g)
+((double double) ((double double) g))
+((double double) g4) ;; 便宜的に ((double double) g)をg4と表現する
+(lambda (x) ((lambda (x) (g4 (g4 x))) ((lambda (x) (g4 (g4 x))) x)))
+#+END_SRC
+
+となる。これにEXP 1と同様の操作をある値Aに対して行うと、以下のようになる
+#+BEGIN_SRC scheme
+(((double (double double)) g) A)
+((lambda (x) ((lambda (x) (g4 (g4 x))) ((lambda (x) (g4 (g4 x))) x))) A)
+...
+(g4 (g4 (g4 (g4 A))))
+#+END_SRC
+これはAにg4を4回適用した結果となる。さらにg4は引数にgを4回適用する手続
+きを表しているので、結局(double (double double))は、値Aに対して手続きg
+を4*4=16回適用する手続きを表していることになる。
+
+上記より、 ~(((double (double double)) inc) 5)~ は5にincを16回適用した
+5 + (1 * 16) = 21 という値になる。
+
+動作確認
+#+BEGIN_SRC scheme
+(((double (double double)) inc) 5)
+21 ;; 予想通り
+#+END_SRC
+
+***** おまけ (TBD)
+#+BEGIN_SRC 
+(((double (double (double double))) inc) 5)の場合はどうなるか？
+#+END_SRC
+
+同様に考えてみる。((double (double double))) g)はgを4*4=16回適用を表す
+のでg16とおく。すると、((double (double (double double))) g)は、
+#+BEGIN_SRC scheme
+((double (double (double double))) g) ;; (double (double double))をg16とおく
+((double g16) g)
+((lambda (x) (g16 (g16 x))) g)
+(g16 (g16 g))
+(g16 (g(g(g(g(g(g(g(g(g(g(g(g(g(g(g(g x)))))))))))))))))
+...
+#+END_SRC
+となる。つまりgを16回適用した結果にさらに16回ずつ適用しているので、合
+計 16*16=256回適用する手続きを表す。
+
+つまりおまけ問題の値は、5 + (1 * 256) = 261 となる（はず）。
+動作確認は以下の通り。
+#+BEGIN_SRC scheme
+(((double (double (double double))) inc) 5)
+261
+#+END_SRC
+
+**** 練習問題 1.42
+
+#+BEGIN_SRC scheme
+(define (compose f g)
+  (lambda (x) (f (g x))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; 補助
+(define (square x) (* x x))
+(define (inc x) (+ 1 x))
+
+;; test
+((compose square inc) 6)
+49
+#+END_SRC
+
+**** 練習問題 1.43
+
+#+BEGIN_SRC scheme
+(define (repeated f n)
+  (define (iter i result)
+    (if (> i n)
+        result
+        (iter (+ i 1) (compose f result))))
+  (iter 2 f))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+((repeated square 2) 5)
+625
+#+END_SRC
+
+**** 練習問題 1.44
+
+#+BEGIN_SRC scheme
+;; smooth
+(define dx 0.00001)
+(define (smooth f)
+  (lambda (x) (/ (+ (f (- x dx))
+                    (f x)
+                    (f (+ x dx)))
+                 3)))
+#+END_SRC
+
+smoothの動作確認
+#+BEGIN_SRC scheme
+;; f = incで確認
+;; わかりやすくするためdx=0.1とする
+(define dx 0.1)
+(/ (+ 1.9 2.0 2.1) 3)
+2.0
+((smooth inc) 1)
+2.0
+
+;; f = square で確認 
+;; ((smooth square) 2) の結果との比較
+(/ (+ (* 1.9 1.9) 4.0 (* 2.1 2.1)) 3)
+4.006666666666667
+
+((smooth square) 2)
+4.006666666666667 ;; OK
+#+END_SRC
+
+*n重平滑化関数(n-fold sommthed function)*
+#+BEGIN_SRC scheme
+(define (n-smooth f n)
+  (repeated (smooth f) n))
+#+END_SRC
+- *(引田メモ)* 抽象化を上手く使えば確かに簡潔に手続きが書けることは何
+  となく実感出来てきた
+
+動作確認
+#+BEGIN_SRC scheme
+((n-smooth inc 1) 1)
+2.0
+((n-smooth inc 2) 1)
+3.0 ;; OK
+#+END_SRC
+
+**** 練習問題 1.45
+
+
+まずは必要な手続き等を整理する。
+#+BEGIN_SRC scheme
+;; fixed-point
+(define (fixed-point f first-guess)
+  (define (close-enough? v1 v2)
+    (< (abs (- v1 v2))
+       tolerance))
+  (define (try guess)
+    (let ((next (f guess)))
+      (if (close-enough? guess next)
+          next
+          (try next))))
+  (try first-guess))
+(define tolerance 0.00001)
+
+;; average-damp: 数値xに適用するとxと(f x)の平均を計算する手続きを返す
+(define (average-damp f)
+  (lambda (x) (average x (f x))))
+(define (average x y) (/ (+ x y) 2.0))
+
+;; 参考: 平均緩和法を使った平方根計算
+(define (sqrt x)
+  (fixed-point (lambda (y) (average y (/ x y)))
+               1.0))
+(define (average x y) (/ (+ x y) 2.0))
+#+END_SRC
+
+xのn乗根をm回平均緩和法で不動点探索する手続き
+#+BEGIN_SRC scheme
+(define (pow n m)
+  (define (iter i result)
+    (if (> i m)
+        result
+        (iter (+ i 1) (* n result))))
+  (iter 1 1))
+(define (f-nth x n)
+  (lambda (y) (/ x (pow y n))))
+
+(define (nth-test x n m)
+  (fixed-point ((repeated average-damp m) (f-nth x (- n 1)))
+               1.0))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+gosh> (nth-test 2 1 1)
+1.9999923706054687
+gosh> (nth-test 2 2 1)
+1.4142135623746899
+gosh> (nth-test 2 3 1)
+1.259923236422975
+gosh> (nth-test 2 4 1)
+^C*** UNHANDLED-SIGNAL-ERROR: unhandled signal 2 (SIGINT) ;; 処理が終わらず
+gosh> (nth-test 2 4 2)
+1.189207115002721
+#+END_SRC
+
+
+
+***** MISC
+average-damp(adとおく)をmかいrepeatedしたらどうなるかハンドトレースして
+みる。結果は意図した通りになっている。
+#+BEGIN_SRC scheme
+;; m=1
+(repeated ad 1)
+(ad)
+;; fを適用すると
+(ad f)
+(lambda (x) (avg x (f x)))
+;; nを適用すると
+((lambda (x) (avg x (f x))) n)
+(avg n (f n))
+
+;; m=2
+(repeated ad 2)
+(iter 3 (lambda (x) (ad (ad x))))
+;; fを適用すると
+((lambda (x) (ad (ad x))) f)
+(ad (ad f)) ;; さらに展開すると
+(ad (lambda (x) (avg x (f x))))
+(lambda (x2) (avg x2 ((lambda (x) (avg x (f x))) x2)))
+;; nを適用すると
+((lambda (x2) (avg x2 ((lambda (x) (avg x (f x))) x2))) n)
+(avg n ((lambda (x) (avg x (f x))) n))
+(avg n (avg n (f n)))
+
+;; m=3
+(repeated ad 3)
+(iter 3 (lambda (x) (ad (ad x))))
+(iter 4 (compose ad (lambda (x) (ad (ad x)))))
+(iter 4 (lambda (x) (ad ((lambda (x) (ad (ad x))) x))))
+(lambda (x) (ad ((lambda (x) (ad (ad x))) x)))
+;; fを適用すると
+((lambda (x) (ad ((lambda (x) (ad (ad x))) x))) f)
+(ad ((lambda (x) (ad (ad x))) f))
+(ad (ad (ad f))) ;; さらに展開すると
+(ad (ad (lambda (x1) (avg x1 (f x1)))))
+(ad (lambda (x2) (avg x2 ((lambda (x1) (avg x1 (f x1))) x2))))
+(lambda (x3) (avg x3 ((lambda (x2) (avg x2 ((lambda (x1) (avg x1 (f x1))) x2))) x3))))
+;; nを適用すると
+((lambda (x3) (avg x3 ((lambda (x2) (avg x2 ((lambda (x1) (avg x1 (f x1))) x2))) x3)))) n)
+(avg n ((lambda (x2) (avg x2 ((lambda (x1) (avg x1 (f x1))) x2))) n))
+(avg n (avg n ((lambda (x1) (avg x1 (f x1))) n)))
+(avg n (avg n (avg n (f n))))
+#+END_SRC
+
+**** 練習問題 1.46
