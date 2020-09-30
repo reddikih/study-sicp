@@ -1,0 +1,506 @@
+* 2.1 データ抽象化入門
+
+- ある手続きをより複雑な手続きの要素として使うとき、その手続を”手続き
+  の抽象化”としてみることもできるということをみてきた
+  - 手続きがどうやって実装されているかという細かいところは隠しておける
+  - その手続き自身が同じ振る舞いをする別の手続きによって置き換えられる
+- 別の言い方をすると、手続きがどのように使われるか、ということをその手
+  続が（より基本的な手続きによって）どのように実装されているかといった
+  細かいところから分離できる
+- 複合データについての同様な概念のことを *データ抽象化 (/data
+  abstraction/)* と呼ぶ
+- *データ抽象化* とは
+  - 複合データオブジェクトがどう使われるかということを、それがより基本
+    的なデータオブジェクトによってどのように構築されているかときった細
+    部から分離することを可能にする方法
+
+- データ抽象化の基本的な考え方
+  - プログラムを構築する際は”抽象データ”を扱うようにする
+  - ”具体的な”データ表現はそのデータを使うプログラムとは独立に定義
+- これら２つの部品をつなぐインターフェースの役割を担う手続き
+  - *セレクタ (selector)*
+  - *コンストラクタ (constructor)*
+  - これらが抽象的なデータを具体的な表現によって実装することになる
+
+
+** 2.1.1 例: 有理数の数値演算
+
+有理数を使って数値演算をおこないたいとする。行いたい演算は
+- 足し算、引き算、掛け算、割り算、２つの有理数が等しいかどうかのテスト、とする
+
+準備
+- 分子と分母から有理数を構築する方法は既に持っていると仮定する
+- 有理数が与えられた時に、その分子と分母を抽出（セレクト）する方法もあるとする
+- コンストラクタとセレクタは手続きとして使うことができる
+#+BEGIN_SRC scheme
+(make-rat <n> <d>) ;; は、分子が整数<n>で分母が整数<d>である有理数を返す (constructor)
+(numer <x>)        ;; は、有理数<x>の分子を返す (selector)
+(denom <x>)        ;; は、有理数<x>の分母を返す (selector)
+#+END_SRC 
+
+ここでは希望的戦略 (/wishful thinking/) を使って設計していく。
+- つまり有理数をどうやって表現するのか、numer, denom, make-ratという手
+  続きをどう実装するのかは後で考えるとして、それらの手続きを持っている
+  と仮定して有理数のモデルを考える。
+
+[TBD] p89の図を入れる
+
+これらの規則を手続きとして表現すると以下のようになる。
+#+BEGIN_SRC scheme
+(define (add-rat x y)
+  (make-rat (+ (* (numer x) (denom y))
+               (* (numer y) (denom x)))
+            (* (denom x) (denom y))))
+(define (sub-rat x y)
+  (make-rat (- (* (numer x) (denom y))
+               (* (numer y) (denom x)))
+            (* (denom x) (denom y))))
+(define (mul-rat x y)
+  (make-rat (* (numer x) (numer y))
+            (* (denom x) (denom y))))
+(define (div-rat x y)
+  (make-rat (* (numer x) (denom y))
+            (* (denom x) (numer y)))
+(define (equal-rat? x y)
+  (= (* (numer x) (denom y))
+     (* (numer y) (denom x))))
+#+END_SRC
+
+上記でセレクタは ~numer~, ~denom~ で、コンストラクタは ~make-rat~ であ
+るが、定義が与えられていない。分母と分子を組み合わせて有理数を作るため
+の方法が必要。
+
+上記の有理数の算術演算手続きは全て基本手続き（+-*/）の他はコンストラク
+タとセレクタしか使っていない。
+
+
+*** ペア
+
+- Schemeではデータ抽象化の具体的レベルの実装にペアという複合構造を用意
+  している
+  - ~cons~ という *基本手続き* によって構築される
+- ペアがあるとき、それらの部品は ~car~ と ~cdr~ という *基本手続き* を
+  使って取り出せる
+
+cons, car, cdrの使い方例。
+#+BEGIN_SRC scheme
+(define x (cons 1 2))
+(car x)
+1
+(cdr x)
+2
+#+END_SRC
+
+ペアは名前をつけて操作できるデータオブジェクト
+
+consは要素がペアであるペアや、またそれが要素となるペアといったものを作れる。
+#+BEGIN_SRC scheme
+(define x (cons 1 2))
+(define y (cons 3 4))
+(define z (cons x y))
+(car (car z))
+1
+(car (cdr z))
+3
+#+END_SRC
+
+- ペアを組み合わせるこの能力が、ペアを全ての複雑なデータ構造を作るため
+  の汎用ブロックとして使えるものにしている。（ということを2.2節で学ぶ）
+- ペアは唯一の基本複合データであり、手続きcons, car, cdrによって実装さ
+  れていて、我々が必要とするただ一つの糊である
+- ペアによって構築されるデータオブジェクトはリスト構造
+  (list-structured)のデータと呼ばれる。
+
+*** 有理数を表現する
+
+ペアにより、分子と分母という２つの整数のペアとして有理数を表現すればよ
+くなる。make-rat, numer, denomは以下のように実装できる。
+#+BEGIN_SRC scheme
+(define (make-rat n d) (cons n d))
+(define (numer x) (car x))
+(define (denom x) (cdr x))
+#+END_SRC
+
+また計算結果を表示するために有理数を分子、スラッシュ（／）、分母として
+表示することにする。
+#+BEGIN_SRC scheme
+(define (print-rat x)
+  (newline)
+  (display (numer x))
+  (display "/")
+  (display (denom x)))
+#+END_SRC
+
+
+有理数手続きでの計算
+#+BEGIN_SRC scheme
+(define one-half (make-rat 1 2))
+(print-rat one-half)
+1/2#<undef>
+
+(define one-third (make-rat 1 3))
+(print-rat (add-rat one-half one-third))
+5/6#<undef>
+
+(print-rat (mul-rat one-half one-third))
+1/6#<undef>
+
+(print-rat (add-rat one-third one-third))
+6/9#<undef>
+#+END_SRC
+
+有理数を既約のものに簡約するために1.2.5節で扱ったgcd手続きを導入する。
+#+BEGIN_SRC scheme
+;; GCD from 1.2.5
+(define (gcd a b)
+  (if (= b 0)
+      a
+      (gcd b (remainder a b))))
+
+(define (make-rat n d)
+  (let ((g (gcd n d)))
+    (cons (/ n g) (/ d g))))
+
+;; 参考: 元々のmake-rat
+;; (define (make-rat n d) (cons n d))
+;; 違いは受け取った引数の最大公約数を求めてからconsを生成するかどうかということ
+#+END_SRC
+
+これで望む結果（既約分数形式）が得られる。
+#+BEGIN_SRC scheme
+(print-rat (add-rat one-third one-third))
+2/3#<undef>
+#+END_SRC
+
+この修正はコンストラクタ(~make-rat~)の修正だけで完了し、実際の演算を実
+装するadd-ratやmul-rat等の手続きはどれも変更する必要がない。これがデー
+タ抽象化の利点の一つ。
+
+*** 練習問題 2.1
+
+#+BEGIN_SRC 
+(define (positive-rat? n d)
+  (cond ((and (positive? n) (positive? d)) #t)
+        ((and (negative? n) (negative? d)) #t)
+        (else #f)))
+
+(define (make-rat n d)
+  (let ((positive (positive-rat? n d)))
+    (if positive
+        (cons (abs n) (abs d))
+        (cons (* -1 (abs n)) (abs d)))))
+#+END_SRC
+
+動作テスト
+#+BEGIN_SRC scheme
+gosh> (make-rat 2 3)
+(2 . 3)  ;; OK
+gosh> (make-rat -2 3)
+(-2 . 3) ;; OK
+gosh> (make-rat 2 -3)
+(-2 . 3) ;; OK
+gosh> (make-rat -2 -3)
+(2 . 3)  ;; OK
+
+(print-rat (sub-rat (make-rat 1 6) (make-rat 1 5))) ;; expect to -1/30
+-1/30#<undef> ;; OK
+#+END_SRC
+
+
+
+** 2.1.2 抽象化の壁
+
+有理数の定義に
+- コンストラクタである ~make-rat~
+- セレクタである ~numer~, ~denom~
+を使った
+
+データ抽象化の底にある考え方
+- それぞれのデータオブジェクトの型に対して、それさえあればその型に対す
+  るどんな演算も行えるような基本演算セットを特定し、その後はデータを操
+  作するのにそれらの演算しか使わないようにする
+
+有理数システムの構造を図で表すと以下のようになる
+#+BEGIN_SRC 
+--------[有理数を使うプログラム]--------
+        問題ドメインでの有理数
+--------[add-rat sub-rat ...]--------
+        分母と分子としての有理数
+--------[make-rat numer denom]--------
+        ペアとしての有利数
+--------[cons car cdr]--------
+        ペアの実装（何でもよい）
+#+END_SRC
+
+水平線はシステムの異なる”レベル”を分離する *抽象化の壁 (/abstraction
+barrier/)* を表している。
+
+- 有理数を使うプログラムは”公共用”として提供された手続き ~add-rat~,
+  ~sub-rat~, ~mul-rat~, ~div-rat~, ~equal-rat?~ だけを使って有理数を操
+  作する。
+- 公共用手続き自身はコンストラクタ(make-rat)とセレクタ(numer, denom)だ
+  けによって実装される
+- コンストラクタとセレクタ自身はペアによって実装されている
+- ペアは ~cons~, ~car~, ~cdr~ によって操作することさえできればどのよう
+  に実装されているかは無視できる
+- それぞれのレベルの手続きは抽象化の壁を定義し、異なるレベルをつなぐイ
+  ンターフェースとなっている
+
+この考え方の利点
+- プログラムの保証や修正が簡単になる
+
+例: 有理数を既約に簡約する問題の別解を考える。簡約を実行するタイミング
+を、有理数の構築時ではなく有理数の部品へのアクセス時にするというやり方
+がある。この場合コンストラクタとセレクタは違ったものになる。
+#+BEGIN_SRC scheme
+(define (make-rat n d) (cons n d))
+(define (numer x)
+  (let ((g (gcd (car x) (cdr x))))
+    (/ (car x) g)))
+(define (denom x)
+  (let ((g (gcd (car x) (cdr x))))
+    (/ (cdr x) g)))
+#+END_SRC
+
+上記セレクタとコンストラクタの実装を切り替える場合に、add-ratやsub-rat
+などは全く修正する必要はない。
+
+表現方法への依存を少しだけのインターフェース手続きに限定することは、プ
+ログラム修正時だけでなく設計時にも役立つ。
+- 別の実装を考慮するための柔軟性を維持できる
+
+
+*** 練習問題 2.2
+
+- constructor
+  - make-segment
+- selector
+  - start-segment, end-segment
+- public I/F
+  - midpoint-segment, x-point, y-point
+
+
+#+BEGIN_SRC scheme
+;; 点の表示用ヘルパー関数
+(define (print-point p)
+  (newline)
+  (display "(")
+  (display (x-point p))
+  (display ",")
+  (display (y-point p))
+  (display ")"))
+
+;; 点の定義
+(define (make-point x y) (cons x y))
+(define (x-point p) (car p))
+(define (y-point p) (cdr p))
+
+;; 線分の定義
+(define (make-segment start end) (cons start end))
+(define (start-segment segment) (car segment))
+(define (end-segment segment) (cdr segment))
+
+;; 中点
+(define (midpoint-segment segment)
+  (define (avg x y) (/ (+ x y) 2))
+  (let ((start (start-segment segment))
+        (end (end-segment segment)))
+    (make-point (avg (x-point start) (x-point end))
+                (avg (y-point start) (y-point end)))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(define p1 (make-point 4 2))
+(define p2 (make-point 10 5))
+(define seg (make-segment p1 p2))
+;;=> ((4 . 2) 10 . 5)
+
+(start-segment seg)
+;;=> (4 . 2)
+(end-segment seg)
+;;=> (10 . 5)
+(midpoint-segment seg)
+(7 . 7/2) ;; (7, 3.5)なのでOK
+#+END_SRC
+
+
+*** 練習問題 2.3 (TBD)
+
+
+** 2.1.3 データとは何か
+
+- 2.1.1節での有理数の実装では有理数演算（add-rat, sub-rat等）を仕様の
+  決まっていない３つの手続き（make-rat, numer, denom）によって実装する
+  ことからはじめた。
+- それらの演算は
+  - データオブジェクト: 分子、分母、有理数 によって定義され
+  - データオブジェクトの振る舞いは、make-rat, numer, denomによって規定
+    されると考えることが出来た
+
+*データ (/data/)* とは何を意味しているか？
+- ~あるセレクタとコンストラクタによって実装される何か~ だけでは十分ではない
+  - 以下有理数での考察がつづく
+- 一般的に ~データというものは、何らかのセレクタとコンストラクタの集合
+  に加え、それらが有効な表現となるために満たさなければならない規定され
+  た条件によって定義されるもの~ と考えることができる。
+
+上記の見方は低レベルなオブジェクトに対しても使える。
+
+例として *ペア* の概念について考える。ペアは
+- ペアとは何か、ではなく
+- 言語がペアを操作する手続きとしてcons, car, cdrを用意している、とだけ
+  述べていた
+  - ２つのオブジェクトをconsによってくっつけたら、それらのオブジェクト
+    をcarとcdrにより取得できる、ということだけを知っていればよかった
+- つまりそれらは、任意のオブジェクトxとyに対して、もしzが ~(cons x y)~
+  であるなら、 ~(car z)~ はxであり、 ~(cdr z)~ はyである、という *条
+  件* を満たす、ということ
+
+上の条件を満たすものであれば、どんな三つの手続きであってもペアを実装す
+る基礎として使うことができる。つまり、cons, car, cdrを実装するときに、
+何のデータ構造も使わず、手続きだけで行えるということ。以下はその実例
+#+BEGIN_SRC scheme
+(define (cons x y)
+  (define (dispatch m)
+    (cond ((= m 0) x)
+          ((= m 1) y)
+          (else (error "Arugment not 0 or 1: CONS" m))))
+  dispatch)
+(define (car z) (z 0))
+(define (cdr z) (z 1))
+#+END_SRC
+
+- (cons x y)で返される値は手続き（内部で定義されたdispatch）
+  - dispatchは一つの引数をとり、値が0か1かによってxかyを返す
+- (car z) はzに0を適用する
+  - もしzが(cons x y)によって作られた手続きであれば、xを返す
+- 同様に(cdr z)はzに1を適用し、
+  - もしzがdipatch手続きならばyを返す
+
+cons, car, cdrだけを使ってペアにアクセスするのであれば、この実装を”本
+物の”データ構造を使う実装と区別することはできない。
+
+上記は、手続きによってペア（というデータオブジェクト）を実装することの
+実例を示している。
+- 手続きをオブジェクトとして操作する能力は、自動的に復号データを表現す
+  る能力を提供することも示している
+- 手続きによるデータの表現 を示している
+  - このプログラミングスタイルは *メッセージパッシング (message
+    passing)* と呼ばれる
+  - （第3章でより詳しく学ぶらしい）
+
+
+*** 練習問題 2.4
+
+#+BEGIN_SRC scheme
+(define (cons x y)
+  (lambda (m) (m x y)))
+(define (car z)
+  (z (lambda (p q) p)))
+#+END_SRC
+
+置換モデル（適用順序評価: 最初に引数を評価）での確認
+#+BEGIN_SRC scheme
+(car (cons 3 4))
+(car (lambda (m) (m 3 4)))
+((lambda (m) (m 3 4)) (lambda (p q) p))
+((lambda (p q) p) 3 4)
+3
+#+END_SRC
+
+cdrの実装
+#+BEGIN_SRC scheme
+;; cdr
+(define (cdr z)
+  (z (lambda (p q) q)))
+#+END_SRC
+
+(cdr (cons 3 4))を置換モデル（適用順序評価）で確認
+#+BEGIN_SRC scheme
+(cdr (cons 3 4))
+(cdr (lambda (m) (m 3 4)))
+((lambda (m) (m 3 4)) (lambda (p q) q))
+((lambda (p q) q) 3 4)
+4
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+gosh> (define test (cons 3 4))
+test
+gosh> (car test)
+3
+gosh> (cdr test)
+4
+#+END_SRC
+
+*(コメント)*
+#+BEGIN_SRC 
+consは手続きの引数で渡された2つのデータに対して任意の操作を行う手続きをうけつけるlamdba式を返す。
+このことにより、lambda式の引数の順番を知っていればcarとcdrという手続きを使ってそれらの値を取り出すことが可能。
+#+END_SRC
+
+*** 練習問題 2.5
+
+- N = 2^a * 3^b とおく。consは整数Nそのもので表現される。
+- carはNを2と3で素因数分解したときの2の累乗の値であるので、Nに対し2で
+  除算を繰り返し、割り切れなくなるまでの除算の回数がa、すなわち(car N)
+  の値である。
+- cdrもcarと同様に考えることができ、この場合2ではなく3の累乗の値なので
+  Nに対しては3で除算を行えばよい。
+
+以下に上記の実装を示す。
+#+BEGIN_SRC scheme
+;; helper:expt 復習も兼ねて
+(define (expt a b)
+  (define (iter n res)
+    (if (<= n 0)
+        res
+        (iter (- n 1) (* res a))))
+  (iter b 1))
+
+(define (div-count x d)
+  (define (iter n res)
+    (if (not (= 0 (remainder res d)))
+        n
+        (iter (+ n 1) (/ res d))))
+  (iter 0 x))
+
+;; cons
+(define (cons x y) (* (expt 2 x) (expt 3 y)))
+(define (car n) (div-count n 2))
+(define (cdr n) (div-count n 3))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+gosh> (define n1 (cons 2 2))
+n1
+gosh> n1
+36 ;; OK
+gosh> (car n1)
+2 ;; OK
+gosh> (cdr n1)
+2 ;; OK
+
+gosh> (define n2 (cons 5 3))
+n2
+gosh> n2
+864 ;; OK
+gosh> (car n2)
+5 ;; OK
+gosh> (cdr n2)
+3 ;; OK
+#+END_SRC
+
+
+*** 練習問題 2.6
+
+チャーチ数
+#+BEGIN_SRC scheme
+(define zero (lambda (f) (lambda (x) x)))
+(define (add-1 n)
+  (lambda (f) (lambda (x) (f ((n f) x)))))
+
+#+END_SRC
