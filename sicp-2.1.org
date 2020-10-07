@@ -494,8 +494,9 @@ gosh> (cdr n2)
 3 ;; OK
 #+END_SRC
 
-
 *** 練習問題 2.6
+
+- [[https://www.dropbox.com/home/%E3%82%A2%E3%83%97%E3%83%AA/GoodNotes%205/GoodNotes/book%20reading/sicp?preview=sicp-note.pdf][note]]
 
 チャーチ数
 #+BEGIN_SRC scheme
