@@ -1386,6 +1386,7 @@ lambdaを使う以外で手続きを返すことはできないか？例えば�
 義した場合等はどうなるだろう？
 
 #+BEGIN_SRC scheme
+;; これでは駄目
 (define (f g)
   (define (h x) (g x)))
 
@@ -1400,6 +1401,11 @@ Stack Trace:
 _______________________________________
   0  (eval expr env)
         at "/usr/local/Cellar/gauche/0.9.9/share/gauche-0.97/0.9.9/lib/gauche/interactive.scm":269
+
+;; これならOK。明示的に定義した手続きを返すようにする
+(define (f g)
+  (define (h x) (g x))
+  h)
 #+END_SRC
 
 *** 練習問題
@@ -1737,3 +1743,8 @@ average-damp(adとおく)をmかいrepeatedしたらどうなるかハンドト�
 #+END_SRC
 
 **** 練習問題 1.46
+
+
+((f add-one) 2)(define (f g)
+  (define (h x) (g x))
+  h)

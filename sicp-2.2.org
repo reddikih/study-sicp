@@ -1,0 +1,516 @@
+* 2.2 階層データと閉包性
+
+- ペアは（このシステムでは？それとも普遍的に？）複合データオブジェクト
+  を構築する基本的な糊となる
+- 箱とポインタ記法 (/box-and-pointer notation/)
+  - それぞれのオブジェクトは箱へのポインタとして表される
+  - 基本（データの）オブジェクトの箱にはオブジェクトの表現（数値なら数
+    字等）が入っている
+- 図2.2の例
+  - (cons 1 2) で作られるペアを表している
+  - ペアの箱は実際には2つの箱で、左の箱にはペアのcarへのポインタが入り、
+    右の箱にはペアのcdrへのポインタが入る
+- *consの閉包性 (closure property)*
+  - ペアを要素とするペアを作る能力
+- 一般的に、データオブジェクトを組み合わせる操作は、その演算による組み
+  合わせの結果自身が、同じ演算によって組み合わせることができるのであれ
+  ば、閉包性を満たす
+- 閉包によって *階層(hierarchical)* 構造 -- 部品によって作られ、その部
+  品もまた部品よって作られ…という構造 -- を作ることが可能になる
+
+* 2.2.1 列の表現
+
+- ペアを使って構築できる便利な構造の一つは *列(sequence)*
+  - 列とはデータオブジェクトの順序付き集合
+- 図2.4は素直な表現方法の一つを示している
+  - 1,2,3,4の列はペアのチェーンとして表される
+  - 最後のペアのcdrはペアではない特別な値を指すことで列の終端であるこ
+    とを伝える
+    - 箱ポインタ図では斜線で表され、プログラムでは変数nilという値で表
+      される
+      - *(引田コメント):* nilは変数？
+  #+BEGIN_SRC scheme
+  ;; 図2.4をプログラムで表現する
+  (cons 1 (cons 2 (cons 3 (cons 4 nil))))
+  #+END_SRC
+- 入れ子のconsによって作られるペアの列は *リスト(/list/)* と呼ばれる
+  - 図2.4の例は ~(list 1 2 3 4)~ によって生成できる。
+
+listの構文
+#+BEGIN_SRC scheme
+(list <a1> <a2> ... <an>)
+
+;; は以下と等価
+(cons <a1> (cons <a2> (cons ... (cons <an> nil) ... )))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+(define one-through-four (list 1 2 3 4))
+one-through-four
+(1 2 3 4)
+#+END_SRC
+
+- carはリストの最初の項を選択し、cdrは最初の項以外の全てからなる部分リ
+  ストを選択するものと考えられる
+- carとcdrを入れ子にしていくとリストの任意の項を取得できる
+- コンストラクタconsは元のリストと同じリストに最初に一つ項が加わったものを作る
+#+BEGIN_SRC scheme
+(car one-through-four)
+1
+(cdr one-through-four)
+(2 3 4)
+(car (cdr one-through-four))
+2
+(cons 10 one-through-four)
+(10 1 2 3 4)
+(cons 5 one-through-four)
+(5 1 2 3 4)
+#+END_SRC
+
+- *nil* は要素のない列、すなわち *空リスト(/empty list/)* と考えること
+  もできる
+
+** リスト演算
+
+*cdrダウン* : 確率されたプログラミングテクニック
+ 
+- *例1) list-ref* list-ref手続きは引数としてリストと数値nを取り、リス
+  トのn番目のものを返す
+  - n = 0 であれば、list-refはリストのcarを返す
+  - そうでなければ、list-refはリストのcdrの(n-1)番目のものを返す
+#+BEGIN_SRC scheme
+(define (list-ref items n)
+  (if (= n 0)
+      (car items)
+      (list-ref (cdr items) (- n 1))))
+
+(define squares (list 1 4 9 16 25))
+(list-ref squares 3)
+;; 16
+#+END_SRC
+
+- リスト全体をcdrダウンするために、Schemeは基本述語null?を持っている
+  - null?は、引数が空リストかどうかテストするもの
+
+- *例2) length* lenghtはリストの要素数を返す手続き
+#+BEGIN_SRC scheme
+;; 再帰プロセス
+(define (lenght items)
+  (if (null? items)
+      0
+      (+ 1 (length (cdr items)))))
+
+(define odds (list 1 3 5 7))
+(length odds)
+;; 4
+#+END_SRC
+
+- lengthの反復プロセススタイル
+#+BEGIN_SRC scheme
+(define (length items)
+  (define (length-iter a count)
+    (if (null? a)
+        count
+        (length-iter (cdr a) (+ 1 count))))
+  (length-iter items 0))
+#+END_SRC
+
+
+*consアップ* もう一つの確率されたプログラミングテクニック
+
+- *例3) append* appendは2つのリストを引数として取り、要素を連結して新しいリストを作る
+- appendの再帰計画
+  - もしlist1が空リストであれば、結果は単にlist2である
+  - そうでなければ、list1のcdrとlist2をappendし、その結果にlist1のcarをconsする
+#+BEGIN_SRC scheme
+(define (append list1 list2)
+  (if (null? list1)
+      list2
+      (cons (car list1) (append (cdr list1) list2))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(append squares odds)
+> (1 4 9 16 25 1 3 5 7)
+(append odds squares)
+> (1 3 5 7 1 4 9 16 25)
+#+END_SRC
+
+** 練習問題
+*** 練習問題 2.17
+
+#+BEGIN_SRC scheme
+(define (last-pair items)
+  (if (null? (cdr items))
+      items    ;; required by gauche. "nil" cannot be used in it.
+      (last-pair (cdr items))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(last-pair (list 23 72 149 34))
+;; (34)
+#+END_SRC
+
+*** 練習問題 2.18
+
+#+BEGIN_SRC scheme
+(define (reverse items)
+  (define (iter src dest)
+    (if (null? src)
+        dest
+        (iter (cdr src) (cons (car src) dest))))
+  (iter items '()))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(reverse (list 1 4 9 16 25))
+;; (25 16 9 4 1)
+#+END_SRC
+
+*** 練習問題 2.19
+TBD
+*** 練習問題 2.20
+
+*ドット末尾記法 (dotted-tail notation)* は覚えておくこと
+
+回答
+#+BEGIN_SRC scheme
+(define (same-parity base . rest)
+  (define (check-and-add b target chain)
+    (if (eq? (odd? b) (odd? target))
+        (cons chain target)
+        chain))
+  (define (iter src result)
+    (if (null? src)
+        result
+        (iter (cdr src) (check-and-add base (car src) result))))
+  (iter rest (cons base '())))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC 
+(same-parity 1 2 3 4 5 6 7 8)
+(same-parity 2 3 4 5 6 7 8)
+#+END_SRC
+
+練習
+#+BEGIN_SRC scheme
+(define (g . w) w)
+(g 1 2 3)
+;; (1 2 3)
+(g)
+;; () ;; 0個以上の引数に対応する。引数が0個の場合は空リストを返す
+#+END_SRC
+
+
+
+** リストに対するマップ
+
+- 非常に便利な演算としてリストのそれぞれの要素に何らかの変換を適用し、
+  結果のリストを返すというものがある
+
+*例) scale-list* scale-listは、与えられた係数をリストの其々の数値にかける
+#+BEGIN_SRC scheme
+(define (scale-list items factor)
+  (if (null? items)
+      '() ;; for gauche
+      (cons (* (car items) factor)
+            (scale-list (cdr items) factor))))
+;; 動作確認
+(scale-list (list 1 2 3 4 5) 10)
+#+END_SRC
+
+この一般的な考え方を抽象化し、mapとよばれる高階手続きによって表現され
+る共通パターンとして捉えることができる。
+
+mapは、1引数の手続きとリストを引数としてとり、リストのそれぞれの要素に
+手続きを適用した結果のリストを返す。
+
+#+BEGIN_SRC scheme
+(define (map proc items)
+  (if (null? items)
+      '()
+      (cons (proc (car items))
+            (map proc (cdr items)))))
+;; 動作例
+(map abs (list -10 2.5 -11.6 17))
+; (10 2.5 11.6 17)
+(map (lambda (x) (* x x)) (list 1 2 3 4))
+; (1 4 9 16)
+#+END_SRC
+
+mapを使ってscale-listの新しい定義を書ける。
+#+BEGIN_SRC scheme
+(define (scale-list items factor)
+  (map (lambda (x) (* x factor)) items))
+#+END_SRC
+
+- mapはリストを扱ううえでのより高いレベルの抽象化を達成する。
+- mapはリストを変形する手続きの実装を、リストの要素をどうやって取り出
+  して結合していくかという細かいところから切り離す *抽象化の壁* を作る
+  ことを助けてくれる
+
+** 練習問題
+*** 練習問題 2.21
+1つ目のsquare-listの定義
+#+BEGIN_SRC scheme
+(define (square x) (* x x))
+(define (square-list items)
+  (if (null? items)
+      '() ;; for gauche
+      (cons (square (car items)) (square-list (cdr items)))))
+#+END_SRC
+
+2つ目のsquare-listの定義
+#+BEGIN_SRC scheme
+(define (square-list items)
+  (map square items))
+#+END_SRC
+
+動作チェック
+#+BEGIN_SRC scheme
+(square-list (list 1 2 3 4))
+#+END_SRC
+
+*** 練習問題 2.22
+*** 練習問題 2.23
+
+
+* 2.2.2 階層構造
+
+- リストによる列の表現は、要素がそれ自身列であるような列を表現するよう
+  に一般化できる
+- ((1 2) 3 4)は、 ~(cons (list 1 2) (list 3 4))~ のように3つの項目を持
+  つリストとして見ることが出来る
+  - 1つ目の項目はそれ自身が (1 2) というリストということになる
+  - 図2.5はこのリストのペアによる表現
+- 要素が列であるような列は *木(tree)* として考えることが出来る
+  - 列の要素: 木の枝
+  - それ自身が列である要素は部分木
+- 再帰は木構造を扱う自然なツール
+  - 木への演算をその枝に対する演算に縮約
+  - 枝の枝に対する演算に縮約... と続けていくことで木の葉にたどり着く
+- 例) 2.2.1節の length手続きと木の葉の総数を返すcount-leaves手続きの比較
+#+BEGIN_SRC scheme
+;; length手続き from 2.2.2
+(define (lenght items)
+  (if (null? items)
+      0
+      (+ 1 (length (cdr items)))))
+
+(define x (cons (list 1 2) (list 3 4)))
+(length x)
+3
+(count-leaves x) ;; 今の時点では未実装
+4
+#+END_SRC
+
+- lengthの再帰計画
+  - リストxのlegnthは、xのcdrのlengthに1を足した値である
+  - 空リストのlengthは0である
+- count-leavesの再帰計画
+  - 空リストのcount-leavesは0である
+  - 葉のcount-leavesは1である
+  - 木xのcount-leavesは、xのcarのcount-leavesとxのcdrのcount-leavesを足した値である
+
+木に対する再帰手続きが書きやすくなるようにschemeでは ~pair?~ という基
+本述語を提供している。pairは引数がペアであるかどうかテストする。
+
+以下はcount-leavesの実装
+#+BEGIN_SRC scheme
+(define (count-leaves x)
+  (cond ((null? x) 0)                       ;; - 空リストのcount-leavesは0である
+        ((not (pair? x)) 1)                 ;; - 葉のcount-leavesは1である
+        (else (+ (count-leaves (car x))     ;; - 木xのcount-leavesは、xのcarのcount-leavesと
+                 (count-leaves (cdr x)))))) ;;   xのcdrのcount-leavesを足した値である
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(define x (cons (list 1 2) (list 3 4)))
+(count-leaves x)
+;; 4
+(list x x)
+(length (list x x))
+;; 2
+(count-leaves (list x x))
+;; 8
+#+END_SRC
+
+*** 練習問題
+**** 練習問題 2.24
+式: (list 1 (list 2 (list 3 4)))
+
+インタプリタの表示結果
+#+BEGIN_SRC scheme
+;; gosh
+(list 1 (list 2 (list 3 4)))
+;; -> (1 (2 (3 4)))
+#+END_SRC
+
+箱-点構造図
+[[./img/sicp_2-2-2_ex2-24_01.png]]
+
+木の表現
+[[./img/sicp_2-2-2_ex2-24_02.png]]
+
+
+**** 練習問題 2.25
+#+BEGIN_SRC scheme
+;; (1 3 (5 7) 9) から7を取り出す
+(define x (list 1 3 (list 5 7) 9))
+(car (cdr (car (cdr (cdr x)))))
+
+;; ((7))
+(define x (list (list 7)))
+(car (car x))
+
+;; (1 (2 (3 (4 (5 (6 7))))))
+(define x (list 1 (list 2 (list 3 (list 4 (list 5 (list 6 7)))))))
+(car (cdr (car (cdr (car (cdr (car (cdr (car (cdr (car (cdr x))))))))))))
+#+END_SRC
+
+**** 練習問題 2.26
+#+BEGIN_SRC scheme
+;; append
+(define (append list1 list2)
+  (if (null? list1)
+      list2
+      (cons (car list1) (append (cdr list1) list2))))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+(define x (list 1 2 3))
+(define y (list 4 5 6))
+
+(append x y) ;; (1 2 3 4 5 6)
+(cons x y)   ;; ((1 2 3) 4 5 6)
+(list x y)   ;; ((1 2 3) (4 5 6))
+#+END_SRC
+
+**** 練習問題 2.27
+#+BEGIN_SRC scheme
+;; 補助手続き: reverse (反復プロセス)
+(define (reverse items)
+  (define (iter src dest)
+    (if (null? src)
+        dest
+        (iter (cdr src) (cons (car src) dest))))
+  (iter items '()))
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+(define (deep-reverse items)
+  (define (iter src dest)
+    (if (null? src)
+        dest
+        (iter (cdr src) (cons (if (pair? (car src)) ;; この(car src)はlet使ってローカル変数にできそう
+                                  (deep-reverse (car src))
+                                  (car src))
+                              dest))))
+  (iter items '()))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; (1 2 3 4) -> (4 3 2 1)
+(define x (list 1 2 3 4))
+(deep-reverse x)
+gosh> (4 3 2 1)
+
+;; ((1 2) (3 4)) -> ((4 3) (2 1))
+(define y (list (list 1 2) (list 3 4)))
+(deep-reverse y)
+gosh> ((4 3) (2 1))
+
+;; (1 (2 3 (4 5)) ((6 7) (8 9))) -> (((9 8) (7 6)) ((5 4) 3 2) 1)
+(define z (list 1 (list 2 3 (list 4 5)) (list (list 6 7) (list 8 9))))
+(deep-reverse z)
+gosh> (((9 8) (7 6)) ((5 4) 3 2) 1)
+#+END_SRC
+
+**** 練習問題 2.28
+
+#+BEGIN_SRC scheme
+;; 練習: disp-leaves: display leaves
+(define (disp-leaves x)
+  (cond ((null? x) (display '()))
+        ((not (pair? x)) (display x))
+        (else (begin (disp-leaves (car x))
+                     (disp-leaves (cdr x))))))
+
+(disp-leaves (list 1 2 3 4))
+(disp-leaves (list (list 1 2) (list 3 4)))
+
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+;; 補助関数
+(define (append list1 list2)
+  (if (null? list1)
+      list2
+      (cons (car list1) (append (cdr list1) list2))))
+
+(define (fringe x)
+  (cond ;;((null? x) '())
+        ((and (null? x) (not (pair? x))) (cons x '()))
+        (else (append (fringe (car x))
+                      (fringe (cdr x))))))
+
+(fringe (list 1 2 3 4))
+(fringe (list (list 1 2) (list 3 4)))
+
+(define x (list (list 1 2) (list 3 4)))
+(fringe-test (list x x))
+#+END_SRC
+
+**** 練習問題 2.29
+TBD
+
+
+*** 木に対するマップ
+
+- mapに再帰を組み合わせたものは木を扱うための強力な抽象化になる
+
+例) scale-tree
+- 引数: 数値の係数と、葉が数値である木
+- 返り値: 同じ形の木で、それぞれの数値が係数倍されたもの
+実装
+#+BEGIN_SRC scheme
+(define (scale-tree tree factor)
+  (cond ((null? tree) '())
+        ((not (pair? tree)) (* tree factor))
+        (else (cons (scale-tree (car tree) factor)
+                    (scale-tree (cdr tree) factor)))))
+(scale-tree (list 1 (list 2 (list 3 4) 5) (list 6 7)) 10)
+> (10 (20 (30 40) 50) (60 70))
+#+END_SRC
+
+scale-treeの別実装
+- 木を部分木の列とみなしてmapを使う
+  - （各部分木の）列にマップを行い、それぞれの部分木を順番に係数倍し、
+    結果のリストを返す
+  - 木が葉である基本ケースでは単純に整数倍する
+#+BEGIN_SRC scheme
+;; 補助: map
+(define (map proc items)
+  (if (null? items)
+      '()
+      (cons (proc (car items))
+            (map proc (cdr items)))))
+
+(define (scale-tree tree factor)
+  (map (lambda (sub-tree)
+         (if (pair? sub-tree)
+             (scale-tree sub-tree factor)
+             (* sub-tree factor)))
+       tree))
+(scale-tree (list 1 (list 2 (list 3 4) 5) (list 6 7)) 10)
+> (10 (20 (30 40) 50) (60 70))
+#+END_SRC
+
