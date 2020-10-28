@@ -276,8 +276,79 @@ mapを使ってscale-listの新しい定義を書ける。
 #+END_SRC
 
 *** 練習問題 2.22
-*** 練習問題 2.23
 
+#+BEGIN_SRC scheme
+(define (square-list items)
+  (define (iter things answer)
+    (if (null? things)
+        answer
+        (iter (cdr things)
+              (cons (square (car things))
+                    answer))))
+  (iter items '()))
+
+;; 動作確認: 逆順になってしまう
+(square-list (list 1 2 3 4))
+> (16 9 4 1) 
+#+END_SRC
+
+逆順になってしまう理由
+- インタプリタが適用順序評価なので、iter呼び出し時の第2引数のconsはさきに計算される
+- 次にiterを実行したとき、answerに一つ前のiteration時のcarの値でペアが作られている
+  - 現在のiteration時の(car things)の後ろに一つ前までのリスト（ペアの
+    ネスト構造）が追加されている
+置換モデルでiterationの部分のみを抜き出してみると以下のような動きになる
+#+BEGIN_SRC scheme
+(square-list (list 1 2 3 4))
+(square-list (1 2 3 4))
+...
+(iter (2 3 4) (cons 1 '()))
+(iter (3 4) (cons 4 (cons 1 '())))
+(iter (4) (cons 9 (cons 4 (cons 1 '()))))
+(iter '() (cons 16 (cons 9 (cons 4 (cons 1 '())))))
+(cons 16 (cons 9 (cons 4 (cons 1 '()))))
+(16 9 4 1)
+#+END_SRC
+  
+#+BEGIN_SRC scheme
+;; consの引数を逆にしたバージョン。これも上手くいかない
+(define (square-list items)
+  (define (iter things answer)
+    (if (null? things)
+        answer
+        (iter (cdr things)
+              (cons answer
+                    (square (car things))))))
+  (iter items '()))
+
+;; 動作確認。リストにならない
+(square-list (list 1 2 3 4))
+> ((((() . 1) . 4) . 9) . 16)
+#+END_SRC
+
+consの引数を逆にしても上手くいかない理由
+- これもiter呼び出し時のconsは適用順序評価なので先に評価される
+- listはペアの連鎖であり、各ペアのcarがリストの要素値でconsは次のリス
+  ト要素であるペアへのポインタか、リストの末尾を表す空リスト'()のいず
+  れかでなければならない。
+- このプログラムではconsでcarには一つ前のiterationまでの結果を指定し、
+  cdrには当該iterationにおけるリストのcarを付けているので、このペアは
+  リストにはならない
+置換モデルでiterationの部分のみを抜き出してみると以下のような動きになる
+#+BEGIN_SRC scheme
+(square-list (list 1 2 3 4))
+(square-list (1 2 3 4))
+...
+(iter (2 3 4) (cons '() 1))
+(iter (3 4) (cons (cons '() 1) 4))
+(iter (4) (cons (cons (cons '() 1) 4) 9))
+(iter '()) (cons (cons (cons (cons '() 1) 4) 9) 16))
+(cons (cons (cons (cons '() 1) 4) 9) 16)
+((((() . 1) . 4) . 9) . 16)
+#+END_SRC
+
+
+*** 練習問題 2.23
 
 * 2.2.2 階層構造
 
@@ -357,7 +428,6 @@ mapを使ってscale-listの新しい定義を書ける。
 木の表現
 [[./img/sicp_2-2-2_ex2-24_02.png]]
 
-
 **** 練習問題 2.25
 #+BEGIN_SRC scheme
 ;; (1 3 (5 7) 9) から7を取り出す
@@ -392,15 +462,6 @@ mapを使ってscale-listの新しい定義を書ける。
 #+END_SRC
 
 **** 練習問題 2.27
-#+BEGIN_SRC scheme
-;; 補助手続き: reverse (反復プロセス)
-(define (reverse items)
-  (define (iter src dest)
-    (if (null? src)
-        dest
-        (iter (cdr src) (cons (car src) dest))))
-  (iter items '()))
-#+END_SRC
 
 回答
 #+BEGIN_SRC scheme
@@ -435,6 +496,7 @@ gosh> (((9 8) (7 6)) ((5 4) 3 2) 1)
 
 **** 練習問題 2.28
 
+練習: 葉の値を表示する
 #+BEGIN_SRC scheme
 ;; 練習: disp-leaves: display leaves
 (define (disp-leaves x)
@@ -445,7 +507,6 @@ gosh> (((9 8) (7 6)) ((5 4) 3 2) 1)
 
 (disp-leaves (list 1 2 3 4))
 (disp-leaves (list (list 1 2) (list 3 4)))
-
 #+END_SRC
 
 回答
@@ -456,22 +517,138 @@ gosh> (((9 8) (7 6)) ((5 4) 3 2) 1)
       list2
       (cons (car list1) (append (cdr list1) list2))))
 
+;; ボツ回答1
 (define (fringe x)
-  (cond ;;((null? x) '())
-        ((and (null? x) (not (pair? x))) (cons x '()))
+  (cond ((not (pair? x)) (cons x '()))
+        ((null? (cdr x)) x)
         (else (append (fringe (car x))
                       (fringe (cdr x))))))
 
-(fringe (list 1 2 3 4))
-(fringe (list (list 1 2) (list 3 4)))
+;; ボツ回答2
+(define (fringe x)
+  (cond ((null? x) '())
+        ((not (pair? x)) x)
+        (else (cons (if (pair? (car x))
+                        (fringe (car x))
+                        (car x))
+                    (fringe (cdr x))))))
 
-(define x (list (list 1 2) (list 3 4)))
-(fringe-test (list x x))
+;; ボツ回答3. 実行時エラー
+(define (fringe x)
+  (define (iter src dest)
+    (cond ((null? src) dest)
+          ((not (pair? src)) src))
+	  (else (iter (cdr src) (cons (if (pair? (car src))
+                                          (iter (car src) dest)
+                                          (car src)))))))
+  (iter x '()))
+
+;; ボツ回答4. 実行時エラー
+(define (fringe x)
+  (cond ((null? x) '())
+        ((not (pair? x)) x)
+        (else (if (pair? (car x))
+                  (cons (fringe (car x)) (fringe (cdr x)))
+                  (car x))
+               (fringe (cdr x)))))
+
+;; ボツ回答5. リストは作れているがreverseしてしまっている
+(define (fringe x)
+  (define (iter src dest)
+    (if (null? src)
+        dest
+        (iter (cdr src) (append (if (pair? (car src))
+                                    (fringe (car src))
+                                    (cons (car src) '()))
+                                dest))))
+  (iter x '()))
+
+;; 回答6. ボツ回答のappendの引数を逆に変更
+(define (fringe x)
+  (define (iter src dest)
+    (if (null? src)
+        dest
+        (iter (cdr src)
+              (append dest
+                      (if (pair? (car src))
+                          (fringe (car src))
+                          (cons (car src) '()))))))
+  (iter x '()))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(fringe (list 1))                     ;; expect to (1)
+> (1)
+(fringe (list 1 2 3 4))               ;; expect to (1 2 3 4)
+> (1 2 3 4)
+(fringe (list (list 1 2) (list 3 4))) ;; expect to (1 2 3 4)
+> (1 2 3 4)
+(fringe (list (list 1 2) 3))          ;; expect to (1 2 3)
+> (1 2 3)
+
+(define x (list (list 1 2) (list 3 4))) ;; expect to (1 2 3 4 1 2 3 4)
+(fringe (list x x))
+> (1 2 3 4 1 2 3 4)
 #+END_SRC
 
 **** 練習問題 2.29
-TBD
 
+#+BEGIN_SRC scheme
+(define (make-mobile left right) (list left right))
+(define (make-branch length structure) (list length structure))
+#+END_SRC
+
+***** a. セレクタと枝の構成要素を返す手続き
+#+BEGIN_SRC scheme
+;; selectors of a mobile
+(define (left-branch mobile) (car mobile))
+(define (right-branch mobile) (car (cdr mobile)))
+
+;; selectors of a branch
+(define (branch-length branch) (car branch))
+(define (branch-structure branch) (car (cdr branch)))
+#+END_SRC
+
+***** b. モビールの総重量を返す手続き: total-weight
+#+BEGIN_SRC scheme
+(define (total-weight mobile)
+  (+ (branch-weight (left-branch mobile))
+     (branch-weight (right-branch mobile))))
+
+(define (branch-weight branch)
+  (let ((struct (branch-structure branch)))
+    (cond ((null? struct) 0) ;; このケースがあり得るのかは不明
+          ((not (pair? struct)) struct)
+          (else (total-weight struct)))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(define m1 (make-mobile (make-branch 1 2)
+                        (make-branch 3 4)))
+(define m2 (make-mobile (make-branch 2 5)
+                        (make-branch 2 6)))
+(define m3 (make-mobile (make-branch 3 4)
+                        (make-branch 3 7)))
+(define m4 (make-mobile (make-branch 4 m2)
+                        (make-branch 4 m3)))
+(define m5 (make-mobile (make-branch 5 m1)
+                        (make-branch 5 m4)))
+(total-weight m1) ;; expected to 6
+> 6
+(total-weight m2) ;; expected to 11
+> 11
+(total-weight m4) ;; expected to m2:11 + m3:11 = 22
+> 22
+(total-weight m5) ;; expected to m1:6 + m4:22 = 28
+> 28
+#+END_SRC
+
+***** c. バランスが取れているかのテスト
+TBD
+***** d. プログラム変更の影響度合い
+TBD
 
 *** 木に対するマップ
 
@@ -514,3 +691,96 @@ scale-treeの別実装
 > (10 (20 (30 40) 50) (60 70))
 #+END_SRC
 
+*** 練習問題
+**** 練習問題 2.30
+#+BEGIN_SRC scheme
+;; 直接的な実装
+(define (square x) (* x x))
+(define (square-tree tree)
+  (cond ((null? tree) '())
+        ((not (pair? tree)) (square tree))
+        (else (cons (square-tree (car tree))
+                    (square-tree (cdr tree))))))
+
+;; mapを使う高階手続きでの実装
+(define (square-tree tree)
+  (map (lambda (sub-tree)
+         (if (pair? sub-tree)
+             (square-tree sub-tree)
+             (square sub-tree)))
+       tree))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; 直接実装版
+(square-tree (list 1 (list 2 (list 3 4) 5) (list 6 7))) ;; extect to (1 (4 (9 16) 25) (36 49))
+> (1 (4 (9 16) 25) (36 49)) ;; OK
+
+;; map版
+(square-tree (list 1 (list 2 (list 3 4) 5) (list 6 7))) ;; extect to (1 (4 (9 16) 25) (36 49))
+> (1 (4 (9 16) 25) (36 49)) ;; OK
+#+END_SRC
+
+**** 練習問題 2.31
+
+#+BEGIN_SRC scheme
+(define (tree-map proc tree)
+  (cond ((null? tree) '())
+        ((not (pair? tree)) (proc tree))
+        (else (cons (tree-map proc (car tree))
+                    (tree-map proc (cdr tree))))))
+
+(define (square x) (* x x))
+(define (square-tree tree) (tree-map square tree))
+
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(square-tree (list 1 (list 2 (list 3 4) 5) (list 6 7))) ;; extect to (1 (4 (9 16) 25) (36 49))
+> (1 (4 (9 16) 25) (36 49))
+
+(square-tree (list (list 1 2) (list 3 4) 5 (list 6 (list 7 (list 8 9))))) ;; expected to ((1 4) (9 16) 25 (36 (49 (64 81))))
+> ((1 4) (9 16) 25 (36 (49 (64 81))))
+#+END_SRC
+
+**** 練習問題 2.32
+
+テンプレート
+#+BEGIN_SRC scheme
+(define (subsets s)
+  (if (null? s)
+      (list '())
+      (let ((rest (subsets (cdr s))))
+        (append rest (map <??> rest)))))
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+(define (subsets s)
+  (if (null? s)
+      (list '())
+      (let ((rest (subsets (cdr s))))
+        (append rest (map (lambda (x) (cons (car s) x)) rest)))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(subsets (list 1))      ;; expected to (() (1))
+> (() (1))
+(subsets (list 1 2 3)) ;; expected to (() (3) (2) (2 3) (1) (1 3) (1 2) (1 2 3))
+> (() (3) (2) (2 3) (1) (1 3) (1 2) (1 2 3))
+#+END_SRC
+
+なぜ動作するのかの説明
+- ~(append rest (map <??> rest))~ の部分は、
+  - restにまだ現れていない集合sの要素eについて、mapでrestの各要素（各要素自身もリスト）の先頭にeを加えたリストを生成し
+  - それをrest（restにはsは存在していない）にappendしている
+  - restは(cdr s)によりcdrダウンしながら再帰的に作られるので、restに含まれていない要素は必然的に(car s)になる
+- そうすると、<ss>の部分は、
+  - (car s)をmapの第2引数であるrestの各要素リストの先頭に付け加えるた
+    めの手続きであればよい。これはそのときの(car s)に動的に依存するので以下のようにlambdaで都度都度手続きを生成して渡してやればよい
+    #+BEGIN_SRC scheme
+    (map (lambda (x) (cons (car s) x)) rest)
+    #+END_SRC
