@@ -912,7 +912,7 @@ scale-treeの別実装
 信号の流れという構造が手続きの中で明確に見て取れるようにプログラムを構
 成できれば、結果となるコードの概念的な明確さを高めることができるだろう。
 
-** 列の演算
+*列の演算*
 
 信号の流れという構造をより明確に反映するようにプログラムを構築するためのポイント
 - 処理の中で各段階の間を流れる”信号”に集中する
@@ -980,7 +980,7 @@ fringe等で単一のリストに変換する必要がある
   (if (> low high)
       '()
       (cons low (enumerate-interval (+ low 1) high))))
-
+      
 (enumerate-interval 2 7)
 > (2 3 4 5 6 7)
 #+END_SRC
@@ -998,7 +998,7 @@ fringe等で単一のリストに変換する必要がある
 >(1 2 3 4 5)
 #+END_SRC
 
-*** 信号の流れ図のような形での定式化
+*信号の流れ図のような形での定式化*
 
 *sum-odd-squares*
 
@@ -1049,6 +1049,7 @@ fringe等で単一のリストに変換する必要がある
 
 ;; 動作例
 (list-fib-squares 10)
+> (0 1 1 4 9 25 64 169 441 1156 3025)
 #+END_SRC
 
 例2: 性数列の中の奇数のものの二乗の積を計算
@@ -1068,12 +1069,15 @@ fringe等で単一のリストに変換する必要がある
 *** 練習問題 2.33
 
 #+BEGIN_SRC scheme
-(define (map p sequence)
-  (accumulate (lambda (x y) (cons (p x) y)) '() sequence))
-(define (append seq1 seq2)
-  (accumulate cons '() (enumerate-tree (list seq1 seq2))))
-(define (length sequence)
-  (accumulate (lambda (x y) (+ 1 y)) 0 sequence))
+  (define (map p sequence)
+    (accumulate (lambda (x y) (cons (p x) y)) '() sequence))
+  (define (append seq1 seq2)
+    (accumulate cons '() (enumerate-tree (list seq1 seq2))))
+  ;; 時田さんバージョン
+  (define (append seq1 seq2)
+    (accumulate cons seq2 seq1))
+  (define (length sequence)
+    (accumulate (lambda (x y) (+ 1 y)) 0 sequence))
 #+END_SRC
 
 動作確認
@@ -1085,9 +1089,1151 @@ fringe等で単一のリストに変換する必要がある
 
 *** 練習問題 2.34
 
+ホーナー法のひながた
+#+BEGIN_SRC scheme
+(define (horner-eval x coefficient-sequence)
+  (accumulate (lambda (this-coeff higher-terms) <??>)
+              0
+              coefficient-sequence))
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+(define (horner-eval x coefficient-sequence)
+  (accumulate (lambda (this-coeff higher-terms) (+ this-coeff (* x higher-terms)))
+              0
+              coefficient-sequence))
+#+END_SRC
+
+置換モデル
+#+BEGIN_SRC scheme
+(horner-eval 2 (list 1 3 0 5 0 1))
+(+ 1 (* 2 (+ 3 (* 2 (+ 0 (* 2 (+ 5 (* 2 (+ 0 (* 2 (+ 1 (* 0 0))))))))))))
+(+ 1 (* 2 (+ 3 (* 2 (+ 0 (* 2 (+ 5 (* 2 (+ 0 (* 2 (+ 1 0)))))))))))
+(+ 1 (* 2 (+ 3 (* 2 (+ 0 (* 2 (+ 5 (* 2 (+ 0 (* 2 1))))))))))
+(+ 1 (* 2 (+ 3 (* 2 (+ 0 (* 2 (+ 5 (* 2 (+ 0 2)))))))))
+(+ 1 (* 2 (+ 3 (* 2 (+ 0 (* 2 (+ 5 (* 2 2))))))))
+(+ 1 (* 2 (+ 3 (* 2 (+ 0 (* 2 (+ 5 4)))))))
+(+ 1 (* 2 (+ 3 (* 2 (+ 0 (* 2 9))))))
+(+ 1 (* 2 (+ 3 (* 2 (+ 0 18)))))
+(+ 1 (* 2 (+ 3 (* 2 18))))
+(+ 1 (* 2 (+ 3 36)))
+(+ 1 (* 2 39))
+(+ 1 78)
+79
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(horner-eval 2 (list 1 3 0 5 0 1)) ;; expected to 79
+> 79
+#+END_SRC
 
 *** 練習問題 2.35
+
+count-leavesを集積として再定義する。以下はそのひながた
+#+BEGIN_SRC scheme
+(define (count-leaves t)
+  (accumulate <??> <??> (map <??> <??>)))
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+;; ボツ回答1. もっとシンプルに出来るはず
+(define (count-leaves t)
+  (accumulate + 0 (map (lambda (x) (cond ((null? x) '())
+                                         ((not (pair? x)) (list 1))
+                                         (else (append (car x) (cdr x)))))
+                       t)))
+;; 以下のようなエラーが出てしまう。# + は (1)と0の間では定義されていない。リストとスカラは+出来ないということ。
+;;gosh> (count-leaves (list 1 2 3 4))
+;;*** ERROR: operation + is not defined between (1) and 0
+
+
+;; 回答2
+;;; 補助手続き
+(define (enumerate-tree tree)
+  (cond ((null? tree) '())
+        ((not (pair? tree)) (list tree))
+        (else (append (enumerate-tree (car tree))
+                      (enumerate-tree (cdr tree))))))
+
+(define (count-leaves t)
+  (accumulate + 0 (map (lambda (x) 1) (enumerate-tree t))))
+#+END_SRC
+
+
+動作確認
+#+BEGIN_SRC scheme
+(count-leaves (list 1 2 3 4)) ;; expected to 4
+> 4
+(count-leaves (list 1 2 (list 3 4 (list 5)) 6 (list 7 8))) ;; expected to 8
+> 8
+#+END_SRC
+
 *** 練習問題 2.36
+
+accumulate-nの雛形
+#+BEGIN_SRC scheme
+(define (accumulate-n op init seqs)
+  (if (null? (car seqs))
+      '()
+      (cons (accumulate op init <??>)
+            (accumulate-n op init <??>))))
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+(define (accumulate-n op init seqs)
+  (if (null? (car seqs))
+      '()
+      (cons (accumulate op init (map (lambda (x) (car x)) seqs))
+            (accumulate-n op init (map (lambda (x) (cdr x)) seqs)))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(define s (list (list 1 2 3) (list 4 5 6) (list 7 8 9) (list 10 11 12)))
+(accumulate-n + 0 s) ;; expected to (22 26 30)
+> (22 26 30)
+#+END_SRC
+
 *** 練習問題 2.37
+
+ベクトル・行列演算のテンプレート
+#+BEGIN_SRC scheme
+;; dot-product: 内積
+(define (dot-product v w)
+  (accumulate + 0 (map * v w)))
+
+;; matrix-*-vector: 行列とベクトルの積
+(define (matrix-*-vector m v)
+  (map <??> m))
+
+;; transpose: 転置行列
+(define (transpose mat)
+  (accumulate-n <??> <??> mat))
+
+;; matrix-*-matrix: 行列同士の積
+(define (matrix-*-matrix m n)
+  (let ((cols (transpose n)))
+    (map <??> m)))
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+;; matrix-*-vector: 行列とベクトルの積
+(define (matrix-*-vector m v)
+  (map (lambda (x) (dot-product x v)) m))
+
+;; transpose: 転置行列
+(define (transpose mat)
+  (accumulate-n cons '() mat))
+
+;; matrix-*-matrix: 行列同士の積
+(define (matrix-*-matrix m n)
+  (let ((cols (transpose n)))
+    (map (lambda (x) (matrix-*-vector cols x)) m)))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; 補助手続き
+(define (accumulate op initial sequence)
+  (if (null? sequence)
+      initial
+      (op (car sequence)
+          (accumulate op initial (cdr sequence)))))
+
+;; test data
+(define v1 (list 1 2 3))
+(define v2 (list 4 5 6))
+(define v3 (list 7 8 9))
+(define vx (list 2 3 4))
+(define m1 (list v1 v2 v3))
+(define m2 (list (list 1 2) (list 2 3) (list 3 4)))
+
+;; test dot-product
+(matrix-*-vector m1 vx) ;; expected to (20 47 74)
+> (20 47 74)
+
+;; test transpose
+(transpose m1) ;; expected to ((1 4 7) (2 5 8) (3 6 9))
+> ((1 4 7) (2 5 8) (3 6 9))
+(transpose (list v1 v3)) ;; expected to ((1 7) (2 8) (3 9))
+> ((1 7) (2 8) (3 9))
+(transpose '()) ;; expected to ()
+> 
+(transpose v1) ;; expected to ((1) (2) (3))
+;;*** ERROR: pair required, but got 1
+;;Stack Trace:
+;;_______________________________________
+;;  0  (car x)
+;;        at "(standard input)":16
+;;  1  (map (lambda (x) (car x)) seqs)
+;;        at "(standard input)":16
+;;  2  (accumulate op init (map (lambda (x) (car x)) seqs))
+;;        at "(standard input)":16
+;;  3  (eval expr env)
+;;        at "/usr/local/Cellar/gauche/0.9.9/share/gauche-0.97/0.9.9/lib/gauche/interactive.scm":269
+;; ベクトルの転置はできない。エラーはaccumulate-nの元々ある部分のものなのでこれで良しとする。
+
+;; test matrix-*-matrix
+(matrix-*-matrix m1 m2) ;; expected to ((14 20) (32 47) (50 74))
+> ((14 20) (32 47) (50 74))
+#+END_SRC
+
 *** 練習問題 2.38
+
+fold-right (=accumulate) と fold-leftの定義
+#+BEGIN_SRC scheme
+;; fold-right
+(define (fold-right op initial sequence)
+  (if (null? sequence)
+      initial
+      (op (car sequence)
+          (accumulate op initial (cdr sequence)))))
+
+;; fold-left
+(define (fold-left op initial sequence)
+  (define (iter result rest)
+    (if (null? rest)
+        result
+        (iter (op result (car rest))
+              (cdr rest))))
+  (iter initial sequence))
+#+END_SRC
+
+式の値
+#+BEGIN_SRC scheme
+(fold-right / 1 (list 1 2 3)) ;; expected to 3/2
+> 3/2
+(fold-left / 1 (list 1 2 3)) ;; expected to 1/6
+> 1/6
+(fold-right list '() (list 1 2 3)) ;; expected to (1 (2 (3 ())))
+> (1 (2 (3 ())))
+(fold-left list '() (list 1 2 3)) ;; expected to (((() 1) 2) 3()
+> (((() 1) 2) 3)
+#+END_SRC
+
+- opが満たさなければならない性質
+  - 可換である（交換則が成り立つ）こと
+その検証
+#+BEGIN_SRC scheme
+(fold-right + 0 (list 1 2 3)) ;; expected to 6
+> 6
+(fold-left + 0 (list 1 2 3)) ;; expected to 6
+> 6
+
+(fold-right * 1 (list 1 2 3)) ;; expected to 6
+> 6
+(fold-left * 1 (list 1 2 3)) ;; expected to 6
+> 6
+#+END_SRC
+
 *** 練習問題 2.39
+
+reverseのテンプレート
+#+BEGIN_SRC scheme
+(define (reverse sequence)
+  (fold-right (lambda (x y) <??>) nil sequence))
+
+(define (reverse sequence)
+  (fold-left (lambda (x y) <??>) nil sequence))
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+(define (reverse-r sequence) ;; 手続き名は敢えて変更
+  (fold-right (lambda (x y) (append y (list x))) '() sequence))
+
+(define (reverse-l sequence) ;; 手続き名は敢えて変更
+  (fold-left (lambda (x y) (cons y x)) '() sequence))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(reverse-r (list 1 2 3 4)) ;; expected to (4 3 2 1)
+> (4 3 2 1)
+
+(reverse-l (list 1 2 3 4)) ;; expected to (4 3 2 1)
+> (4 3 2 1)
+#+END_SRC
+
+ appendは可換ではない。
+
+*** その他
+
+- [[https://qiita.com/kaz-yos/items/d1ecd4bfe9989c290e99][qiita]] とかにfold-rignt, fold-leftに言及していた。
+- fold-right/fold-leftに関する[[https://en.wikipedia.org/wiki/Fold_(higher-order_function)][wikipedia記事]]図が参考になる。
+
+** マップのネスト
+
+- 列というパラダイムを拡張（マップをネスト）して、普通はネストしたルー
+  プによって表現されるような多くの計算に適用できる。
+- 計算例: 正の整数nが与えられた時、1<=j<i<=nで、かつi+jが素数となるよう
+  な異なる正の整数iとjのすべての順序つきペアを見つける
+  - n以下の正の整数からなる大きい順に並んだ全てのペアの列を生成
+  - フィルタにより合計が素数となるペアを選択
+  - フィルタを通過したペア(i,j)に対し(i,j,i+j)という三つ組を作る
+- ペアの列の生成方法
+  - 全ての整数i<=nに対して整数j<iを列挙し、iとjすべてに対して(i,j)を生成する
+    - (enumerate-interval 1 n)の列にマップを行う
+    - 列のそれぞれのiに対し(enumerate-interval 1 (- i 1))という列にマップ
+    - 後者の列のそれぞれのjに対して、(list i j)というペアを生成する
+    - それぞれのiに対する列ができるので、それらをappendで集積する
+#+BEGIN_SRC scheme
+(accumulate append
+            '() (map (lamnbda (i)
+                       (map (lambda (j) (list i j))
+                            (enumerate-interval 1 (- i 1))))
+                     (enumerate-interval 1 n)))
+#+END_SRC
+
+理解のための動作確認
+#+BEGIN_SRC scheme
+;; 補助関数
+(define (enumerate-interval low high)
+  (if (> low high)
+      '()
+      (cons low (enumerate-interval (+ low 1) high))))
+
+;; appendで集積しない場合、各i毎に列としてまとめられてしまっている
+(define (f n)
+  (map (lambda (i)
+               (map (lambda (j) (list i j))
+                    (enumerate-interval 1 (- i 1))))
+       (enumerate-interval 1 n)))
+(f 6)
+> (() ((2 1)) ((3 1) (3 2)) ((4 1) (4 2) (4 3)) ((5 1) (5 2) (5 3) (5 4))
+ ((6 1) (6 2) (6 3) (6 4) (6 5)))
+
+;; appendで集積すると各iに対するペア列も展開されてフラットな列になる。だから "flat-map" ということか。
+(define (g n)
+  (accumulate append
+            '()
+            (map (lambda (i) (map (lambda (j) (list i j))
+                                  (enumerate-interval 1 (- i 1))))
+                 (enumerate-interval 1 n))))
+(g 6)
+> ((2 1) (3 1) (3 2) (4 1) (4 2) (4 3) (5 1) (5 2) (5 3) (5 4) (6 1) (6 2) (6 3)
+ (6 4) (6 5))
+#+END_SRC
+
+マップと集積をappendによって組み合わせることはよくあることなので
+*flatmap* という独立した手続きとして分離しておく。
+#+BEGIN_SRC scheme
+;; flatmap
+(define (flatmap proc seq)
+  (accumulate append '() (map proc seq)))
+#+END_SRC
+
+次にペアの列をフィルタして和が素数となるものを探す。この場合述語の引数はペアになる。
+#+BEGIN_SRC scheme
+;; 補助関数: prime? from 1.2.6
+(define (prime? n)
+  (define (smallest-divisor n) (find-divisor n 2))
+  (define (find-divisor n test-divisor)
+    (cond ((> (square test-divisor) n) n)
+          ((divides? test-divisor n) test-divisor)
+          (else (find-divisor n (+ test-divisor 1)))))
+  (define (divides? a b) (= (remainder b a) 0))
+  (= n (smallest-divisor n)))
+
+(define (prime-sum? pair)
+  (prime? (+ (car pair) (cadr pair)))) ;; (list x y) でyを取り出すときは cadr を使うのが自然ということか
+#+END_SRC
+
+最後にフィルタを通ったペアの列をマップして結果の列を生成する。
+#+BEGIN_SRC scheme
+(define (make-pair-sum pair)
+  (list (car pair) (cadr pair) (+ (car pair) (cadr pair))))
+#+END_SRC
+
+これらを全て組み合わせる。
+#+BEGIN_SRC scheme
+(define (prime-sum-pairs n)
+  (map make-pair-sum
+       (filter prime-sum? (flatmap (lambda (i) (map (lambda (j) (list i j))
+                                                    (enumerate-interval 1 (- i 1))))
+                                   (enumerate-interval 1 n)))))
+
+;; 動作確認
+(prime-sum-pairs 6)
+> ((2 1 3) (3 2 5) (4 1 5) (4 3 7) (5 2 7) (6 1 7) (6 5 11))
+#+END_SRC
+
+
+マップのネストは区間の列挙以外にも役に立つ。例として、ある集合Sに対し
+てその順列を生成することを考える。例えば {1,2,3}の順列は、
+                             #+BEGIN_SRC 
+{1,2,3}, {1,3,2}, {2,1,3}, {2,3,1}, {3,1,2}, {3,2,1}
+#+END_SRC
+となる。
+
+#+BEGIN_SRC scheme
+(define (permutations s)
+  (if (null? s)
+      (list '())
+      (flatmap (lambda (x) (map (lambda (p) (cons x p))
+                                (permutations (remove x s))))
+               s)))
+
+(define (remove item sequence)
+  (filter (lambda (x) (not (= x item)))
+         sequence))
+
+;; 動作確認
+(permutations (list 1 2 3))
+> ((1 2 3) (1 3 2) (2 1 3) (2 3 1) (3 1 2) (3 2 1))
+#+END_SRC
+
+** 練習問題
+*** 練習問題 2.40 
+
+回答
+#+BEGIN_SRC scheme
+;; unique-pairs
+(define (unique-pairs n)
+  (flatmap (lambda (i) (map (lambda (j) (list i j))
+                            (enumerate-interval 1 (- i 1))))
+           (enumerate-interval 1 n)))
+
+;; prime-sum-pairs w/unique-pairs
+(define (prime-sum-pairs n)
+  (map make-pair-sum
+       (filter prime-sum? (unique-pairs n))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; unique-pairsのテスト
+(unique-pairs 6)
+> ((2 1) (3 1) (3 2) (4 1) (4 2) (4 3) (5 1) (5 2) (5 3) (5 4) (6 1) (6 2) (6 3)
+ (6 4) (6 5))
+
+;; unique-pairsを使ったprime-sum-pairsのテスト
+(prime-sum-pairs 6)
+((2 1 3) (3 2 5) (4 1 5) (4 3 7) (5 2 7) (6 1 7) (6 5 11))
+#+END_SRC
+
+*** 練習問題 2.41 
+
+練習
+#+BEGIN_SRC scheme
+(define (f n)
+  (flatmap (lambda (i) (map (lambda (j) (map (lambda (k) (list i j k))
+                                             (enumerate-interval 1 (- i 2))))
+                            (enumerate-interval 1 (- i 1))))
+           (enumerate-interval 1 n)))
+
+(f 6)
+> (() ((3 1 1)) ((3 2 1)) ((4 1 1) (4 1 2)) ((4 2 1) (4 2 2)) ((4 3 1) (4 3 2))
+ ((5 1 1) (5 1 2) (5 1 3)) ((5 2 1) (5 2 2) (5 2 3)) ((5 3 1) (5 3 2) (5 3 3))
+ ((5 4 1) (5 4 2) (5 4 3)) ((6 1 1) (6 1 2) (6 1 3) (6 1 4))
+ ((6 2 1) (6 2 2) (6 2 3) (6 2 4)) ((6 3 1) (6 3 2) (6 3 3) (6 3 4))
+ ((6 4 1) (6 4 2) (6 4 3) (6 4 4)) ((6 5 1) (6 5 2) (6 5 3) (6 5 4)))
+;; 列の列になってしまっている。大小順でもない。重複する数値の組が存在する
+
+;; flatmapをネストしてみる
+(define (f n)
+  (flatmap (lambda (i) (flatmap (lambda (j) (map (lambda (k) (list i j k))
+                                                 (enumerate-interval 1 (- i 2))))
+                                (enumerate-interval 1 (- i 1))))
+           (enumerate-interval 1 n)))
+
+(f 6)
+> ((3 1 1) (3 2 1) (4 1 1) (4 1 2) (4 2 1) (4 2 2) (4 3 1) (4 3 2) (5 1 1)
+ (5 1 2) (5 1 3) (5 2 1) (5 2 2) (5 2 3) (5 3 1) (5 3 2) (5 3 3) (5 4 1)
+ (5 4 2) (5 4 3) (6 1 1) (6 1 2) (6 1 3) (6 1 4) (6 2 1) (6 2 2) (6 2 3)
+ (6 2 4) (6 3 1) (6 3 2) (6 3 3) (6 3 4) (6 4 1) (6 4 2) (6 4 3) (6 4 4)
+ (6 5 1) (6 5 2) (6 5 3) (6 5 4))
+;; 列の列は直せた。重複する数値を持つタプルの除去をどうすべきか
+
+;; 合計がsかつ重複する数値を持っていないタプルを選択するフィルタを作る
+(define (filter-tuple s tup)
+  (define (sum-tuple t) (+ (car t) (cadr t) (caddr t)))
+  (define (unique-tuple? t) (not (or (= (car t) (cadr t))
+                                   (= (cadr t) (caddr t))
+                                   (= (car t) (caddr t)))))
+  (and (= s (sum-tuple tup)) (unique-tuple? tup)))
+
+(filter-tuple 6 (list 1 2 3)) ;; expected to #t
+> #t
+(filter-tuple 5 (list 1 2 3)) ;; expected to #f
+> #f
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+;; 補助関数
+(define (enumerate-interval low high)
+  (if (> low high)
+      '()
+      (cons low (enumerate-interval (+ low 1) high))))
+(define (accumulate op init seq)
+  (if (null? seq)
+      init
+      (op (car seq) (accumulate op init (cdr seq)))))
+(define (flatmap proc seq)
+  (accumulate append '() (map proc seq)))
+(define (unique-pairs n)
+  (flatmap (lambda (i) (map (lambda (j) (list i j))
+                            (enumerate-interval 1 (- i 1))))
+           (enumerate-interval 1 n)))
+
+;;---- ここからが実際の回答 ----;;
+;; make-unique-tuples
+(define (unique-tuple n)
+  (flatmap (lambda (i)
+             (map (lambda (j) (append (list i) j))
+                  (unique-pairs (- i 1))))
+           (enumerate-interval 1 n)))
+
+;; filter
+(define (equals-to-s? s tup)
+  (= s (+ (car tup) (cadr tup) (caddr tup))))
+
+;; integration
+(define (s-equals-to-sum-of-tuple s n)
+  (filter (lambda (t) (equals-to-s? s t))
+          (unique-tuple n)))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(s-equals-to-sum-of-tuple 10 6) ;; expected to ((5 3 2) (5 4 1) (6 3 1))
+> ((5 3 2) (5 4 1) (6 3 1))
+#+END_SRC
+
+- *(コメント)*
+  - 上手く動いているが、unique-tupleでのflatmapが正直まだ完全に理解で
+    きていない。こんな感じかなとコードを書いて動かしてみたら上手く動い
+    たという状態なのでちゃんと動作を理解すること
+  - flatmapは（列の各項目にprocを適用しつつ）列の列を単一の列に展開する
+    手続きという理解でよいか？
+    - 列の列の列の場合は列の列になる
+
+*** 練習問題 2.42 
+
+queensの雛形
+#+BEGIN_SRC scheme
+;;
+;; variables
+;;   empty-board    位置の空集合
+;;   positions      k列までの位置集合(列の列の列か。列の列で１つの盤上の位置パターンを表し、さらにそれらのパターンの列を形成する)
+(define (queens board-size)
+  (define (queen-cols k)
+    (if (= k 0)
+        (list empty-board) ;; 要実装
+        (filter
+          (lambda (positions) (safe? k positions)) ;; 要実装
+          (flatmap
+            (lambda (rest-of-queens) ;; k-1列にk-1個のクイーンを置くパターンの一つ
+              (map (lambda (new-row) ;; k列目のクイーンを置く候補となる行
+                     (adjoin-position ;; 要実装
+                     new-row k rest-of-queens))
+                   (enumerate-interval 1 board-size)))
+            (queen-cols (- k 1))))))
+   (queen-cols board-size))
+
+;; 実装要諦手続き
+(define (adjoin-position new-row k rest-of-queens) <??>) ;; 位置集合に新しい行・列の位置を追加する
+(define empty-board <??>)                                ;; 位置の空集合（初期ボードを表現）
+(define (safe? k positions) <??>)                        ;; k列目のクイーンが他のクイーンの利き筋にはいっていないかをテストする
+
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+(define (adjoin-position new-row k rest)
+  (if (or (null? rest) (null? (car rest))))
+      (list new-row)
+      ())
+#+END_SRC
+
+練習
+#+BEGIN_SRC scheme
+(define empty-board (map (lambda (i) (list ())) (enumerate-interval 1)))
+(define (f size n)
+  ())
+#+END_SRC
+
+振り返り
+#+BEGIN_SRC scheme
+(define (flatmap proc seq)
+  (accumulate append '() (map proc seq)))
+
+(define (map p sequence)
+  (accumulate (lambda (x y) (cons (p x) y)) '() sequence))
+
+(define (accumulate op init seq)
+  (if (null? seq)
+      init
+      (op (car seq) (accumulate op init (cdr seq)))))
+
+(map (lambda (x) (+ x 1)) (list 1 2 3))
+(accumulate (lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) () (1 2 3)) ((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 1 (accumulate (lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) () (2 3)))
+((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 1 ((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 2 (accumulate (lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) () (3))))
+((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 1 ((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 2 ((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 3 (accumulate (lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) () ()))))
+((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 1 ((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 2 ((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 3 '()))) ((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 1 ((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 2 (cons 4 '())))
+((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 1 (cons ((lambda (z) (+ z 1)) 2) (cons 4 '())))
+((lambda (x y) (cons ((lambda (z) (+ z 1)) x) y)) 1 (cons 3 (cons 4 '())))
+(cons ((lambda (z) (+ z 1)) 1) (cons 3 (cons 4 '())))
+(cons 2 (cons 3 (cons 4 '())))
+(2 3 4)
+
+;; 各種手続きの定義
+(define (flatmap proc seq)
+  (accumulate append '() (map proc seq)))
+
+(define (accumulate op init seq)
+  (if (null? seq)
+      init
+      (op (car seq) (accumulate op init (cdr seq)))))
+
+;; mapはaccumulate版とよりプリミティブなバージョンがある。
+(define (map proc seq)
+  (if (null? seq)
+      '()
+      (cons (proc (car seq)) (map proc (cdr seq)))))
+(define (map p sequence)
+  (accumulate (lambda (x y) (cons (p x) y)) '() sequence))
+
+(define (enumerate-interval low high)
+  (if (> low high)
+      '()
+      (cons low (enumerate-interval (+ low 1) high))))
+#+END_SRC
+
+検討
+- mapはcdrダウンとconsアップによりprocを列のcarに適用した結果の列を返す
+- map自体に列の列を作る機能はない。あくまでもmapに渡されるprocとseqに
+  より列の列はつくられるはず
+board-size=4としたときの動作を考える
+- k=0のとき
+  - (queen-cols 0)の評価結果は empty-board
+- k=1のとき
+  - flatmapに適用される列はempty-board
+  - adjoin-positionのmapは
+    - (map (lambda (new-row) (adjoin-position new-row 2 empty)) (1 2 3 4))
+      - (cons (adjoin-position 1 1 empty)
+          (cons (adjoin-position 2 1 empty)
+            (cons (adjoin-position 3 1 empty)
+              (cons (adjoin-position 4 1 empty))))
+      - (((1) (2) (3) (4))) ;; になるべき
+  - flatmapの結果は
+    - ((1) (2) (3) (4)) ;; になるべき
+  - filterの結果は（）k=0のときとは利かないので全パターンを通す
+    - ((1) (2) (3) (4))
+- k=2
+  - flatmapに適用される列は'((1) (2) (3) (4))
+  - adjoin-positionのmapは
+    - (map (lambda (new-row) (adjoin-position new-row 2 (1))) (1 2 3 4))
+      - (cons (adjoin-position 1 2 (1))
+          (cons (adjoin-position 2 2 (1)))
+            (cons (adjoin-position 3 2 (1)))
+              (cons (adjoin-position 4 2 (1))) '())
+      - ((1 1) (1 2) (1 3) (1 4))
+    - (map (lambda (new-row) (adjoin-position new-row 2 (2))) (1 2 3 4))
+      - (cons (adjoin-position 1 2 (2))
+          (cons (adjoin-position 2 2 (2)))
+            (cons (adjoin-position 3 2 (2)))
+              (cons (adjoin-position 4 2 (2))) '())
+      - ((2 1) (2 2) (2 3) (2 4))
+    - (map (lambda (new-row) (adjoin-position new-row 2 (3))) (1 2 3 4))
+      - (cons (adjoin-position 1 2 (3))
+          (cons (adjoin-position 2 2 (3)))
+            (cons (adjoin-position 3 2 (3)))
+              (cons (adjoin-position 4 2 (3))) '())
+      - ((3 1) (3 2) (3 3) (3 4))
+    - (map (lambda (new-row) (adjoin-position new-row 2 (4))) (1 2 3 4))
+      - (cons (adjoin-position 1 2 (4))
+          (cons (adjoin-position 2 2 (4)))
+            (cons (adjoin-position 3 2 (4)))
+              (cons (adjoin-position 4 2 (4))) '())
+      - ((4 1) (4 2) (4 3) (4 4))
+  - flatmapの結果は
+    - ((1 1) (1 2) (1 3) (1 4) (2 1) (2 2) (2 3) (2 4) (3 1) (3 2) (3 3) (3 4) (4 1) (4 2) (4 3) (4 4))
+  - になるはず。
+- つまりqueen-colsはfilterを無視した場合、1からboard-sizeまでの数値の
+  一意な組み合わせの列挙を行う
+
+
+#+BEGIN_SRC scheme
+(define (f x)
+   (flatmap (lambda (rest) (map (lambda (n) (list n)) (enumerate-interval 1 x))) '(())))
+#+END_SRC
+
+*** 練習問題 2.43
+TBD
+
+* 2.2.4 例: 図形言語
+
+- この節では図形を描く簡単な言語を紹介することで抽象と閉包の持つ力を示
+  し、公開手続きの本質的な部分を利用する
+- この言語は要素をずらしたり拡大縮小したりしたものによって構成されるパ
+  ターンについての実験がやりやすいように設計されている
+- この言語も閉包性をみたし、どんな複雑なパターンでも簡単に構築できる
+
+#+BEGIN_SRC 
+（復習）閉包性 (from 2.2 階層データと閉包性より)
+
+データオブジェクトを組み合わせる”操作”は、その演算による組み合わせの結果自身が同じ演算によって組み合わせることが出来るなら「閉包性」を満たすという
+#+END_SRC
+
+
+** 図形言語
+
+言語を記述する際のポイント
+- 言語の基本要素
+- 組み合わせ方法
+- 抽象化方法
+
+この図形言語のエレガントさの一つは *ペインタ(painter)* という一種類の要素しか持たせていないというもの
+
+*ペインタ*: 指定された平行四辺形型の枠にフィットするように画像をずらしたり拡大縮小したりしたものを描画する
+
+（基本）ペインタの例
+ - wave
+ - rogers
+
+*jakldによる図形言語環境準備*
+#+BEGIN_SRC scheme
+;; 描画ウィンドウの表示
+(start-picture)
+;; Standard frame
+(define frm1 (make-frame (make-vect 0.0 0.0)
+                         (make-vect 1.0 0.0)
+                         (make-vect 0.0 1.0)))
+;; 描画手続き
+(define (show painter . frame)
+  (clear-picture)
+  (painter (if (null? frame) frm1 (car frame))))
+;; ロジャース
+(define rogers (image->painter "./rogers.gif"))
+;; 線画
+(define wave
+  (let ((p01 (make-vect 0.40 1.00))
+        (p02 (make-vect 0.60 1.00))
+        (p03 (make-vect 0.00 0.80))
+        (p04 (make-vect 0.35 0.80))
+        (p05 (make-vect 0.65 0.80))
+        (p06 (make-vect 0.00 0.60))
+        (p07 (make-vect 0.30 0.60))
+        (p08 (make-vect 0.40 0.60))
+        (p09 (make-vect 0.60 0.60))
+        (p10 (make-vect 0.70 0.60))
+        (p11 (make-vect 0.20 0.55))
+        (p12 (make-vect 0.30 0.55))
+        (p13 (make-vect 0.35 0.50))
+        (p14 (make-vect 0.65 0.50))
+        (p15 (make-vect 0.20 0.45))
+        (p16 (make-vect 1.00 0.40))
+        (p17 (make-vect 0.50 0.20))
+        (p18 (make-vect 1.00 0.20))
+        (p19 (make-vect 0.25 0.00))
+        (p20 (make-vect 0.40 0.00))
+        (p21 (make-vect 0.60 0.00))
+        (p22 (make-vect 0.75 0.00)))
+    (segments->painter
+      (list (make-segment p01 p04)
+            (make-segment p04 p08)
+            (make-segment p08 p07)
+            (make-segment p07 p11)
+            (make-segment p11 p03)
+            (make-segment p06 p15)
+            (make-segment p15 p12)
+            (make-segment p12 p13)
+            (make-segment p13 p19)
+            (make-segment p20 p17)
+            (make-segment p17 p21)
+            (make-segment p22 p14)
+            (make-segment p14 p18)
+            (make-segment p16 p10)
+            (make-segment p10 p09)
+            (make-segment p09 p05)
+            (make-segment p05 p02)))))
+#+END_SRC
+
+画像を結合するには、与えられたペインタから新しいペインタを構築するいろいろな演算を使う
+- ~beside~: 2つのペインタを引数にとり、枠の左半分に1つ目のペインタ、右半分に2つ目のペインタの画像を描く新しい複合ペインタを作る
+- ~below~: 2つのペインタを引数にとり、2つ目のペインタの画像の下に1つ目のペインタの画像を描く複合ペインタを作る
+- ~flip-vert~: 1つのペインタを引数にとり、その画像を上下逆に描くペインタを作る
+- ~flip-horiz~: 1つのペインタを引数にとり、その画像左右逆に描くペインタを作る
+
+例) waveから始めて、二段階を経て構築したwave4の描く画像（図2.12）
+#+BEGIN_SRC scheme
+(define wave2 (beside wave (flip-vert wave)))
+(define wave4 (below wave2 wave2))
+
+;; 動作確認
+(show wave2)
+(show wave4)
+#+END_SRC
+[[TBD/実行結果]]
+
+ペインタはこの言語の結合手段について閉じているので、より複雑なペインタを作るのに、それを要素して使うことが可能
+- ペインタ: 図形言語のデータオブジェクト
+- beside, flip-vert, etc.: データオブジェクトを操作する演算
+- ペインタを演算した結果もペインタという閉包性を持つ
+
+データが結合手段について閉じている -> 少しの演算によって複雑な構造を作る能力を実現するうえで決定的に重要
+
+よくある結合パターンを抽象化する。
+- ペインタ演算をSchemeの手続きとして実装することで、図形言語のための特別な抽象化メカニズムは不要となる
+
+例えば、wave4に出てくるパターンは次のように抽象化できる
+#+BEGIN_SRC scheme
+(define (flipped-pairs painter)
+  (let ((painter2 (beside painter (flip-vert painter))))
+    (below painter2 painter2)))
+
+(define wave4 (flipped-pairs wave))
+
+;; 動作確認
+(show wave4)
+#+END_SRC
+[[TBD/実行結果]]
+
+
+再帰演算の定義可能。（図2.13, 2.14のような、右方向や右上方向に枝分かれしていくペインタ）
+#+BEGIN_SRC scheme
+;; 右方向への枝分かれ
+(define (right-split painter n)
+  (if (= n 0)
+      painter
+      (let ((smaller (right-split painter (- n 1))))
+        (beside painter (below smaller smaller)))))
+
+;; 動作確認
+(show (right-split wave 4))
+(show (right-split rogers 4))
+
+;; 右上方向への枝分かれ
+(define (corner-split painter n)
+  (if (= n 0)
+      painter
+      (let ((up (up-split painter (- n 1)))
+            (right (right-split painter (- n 1))))
+        (let ((top-left (beside up up))
+              (bottom-right (below right right))
+              (corner (corner-split painter (- n 1))))
+          (beside (below painter top-left)
+                  (below bottom-right corner))))))
+
+;; 動作確認
+(show (corner-split wave 4))
+(show (corner-split rogers 4))
+#+END_SRC
+[[TBD/実行結果]]
+
+*(コメント) PDFファイル版SICPの図2.14はn=4じゃなくてn=5の間違い。本のSICPはちゃんとn=4の場合の描画になっている。*
+
+図2.9はsquare-limit手続きの出力結果
+#+BEGIN_SRC scheme
+(define (square-limit painter n)
+  (let ((quarter (corner-split painter n)))
+    (let ((half (beside (flip-horiz quarter) quarter)))
+      (below (flip-vert half) half))))
+
+;; 動作確認
+(show (square-limit wave 4))
+(show (square-limit rogers 4))
+#+END_SRC
+[[TBD/実行結果]]
+
+** 練習問題
+*** 練習問題 2.44 up-split手続き
+
+回答
+#+BEGIN_SRC scheme
+(define (up-split painter n)
+  (if (= n 0)
+      painter
+      (let ((smaller (up-split painter (- n 1))))
+        (below painter (beside smaller smaller)))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(show (up-split wave 4))
+(show (up-split rogers 4))
+#+END_SRC
+TBD
+
+** 高階関数
+
+ペインタを組み合わせるパターンの抽象化だけでなく、より高いレベルでペインタ演算を組み合わせるパターンの抽象化もできる
+- ペインタ演算を引数としてとり、新しいペインタ演算を作るような手続き、を書くことが出来る
+
+例: flipped-pairsとsquare-limitのパターンの抽象化。
+- 以下の手続は、4つの1引数ペインタ演算を引数として取り、ある与えられたペインタをこれらの4つの演算によって変形したものを正方形に配置するペインタ演算を作る
+#+BEGIN_SRC scheme
+(define (square-of-four tl tr bl br)
+  (lambda (painter)
+    (let ((top (beside (tl painter) (tr painter)))
+          (bottom (beside (bl painter) (br painter))))
+      (below bottom top))))
+
+;; flipped-pairs by square-of-four
+(define (flipped-pairs painter)
+  (let ((combine4 (square-of-four identity flip-vert
+                                  identity flip-vert)))
+    (combine4 painter)))
+;; 上と等価な書き方(脚注24)より
+(define flipped-pairs
+  (square-of-four identity flip-vert identyty flip-vert))
+;; 実行するときは (flipped-pairs painter) と呼べば良い
+
+;; square-limit by sqaure-of-four
+(define (square-limit painter n)
+  (let ((combine4 (square-of-four flip-horiz identity rotate180 flip-vert)))
+    (combine4 (corner-split painter n))))
+#+END_SRC
+
+*TBD 動作確認*
+
+** 練習問題
+*** 練習問題 2.45
+
+right-splitとup-splitの定義
+#+BEGIN_SRC scheme
+(define right-split (split beside below))
+(define up-split (split below beside))
+#+END_SRC
+
+回答: splitの定義
+#+BEGIN_SRC scheme
+(define (split op1 op2)
+  (define (iter painter n)
+    (if (= n 0)
+        painter
+        (let ((smaller (iter painter (- n 1))))
+          (op1 painter (op2 smaller smaller)))))
+  (lambda (x y) (iter x y)))
+#+END_SRC
+
+*TBD 動作確認*
+#+BEGIN_SRC scheme
+;; right-split
+TBD
+
+;; up-split
+TBD
+#+END_SRC
+
+** 枠
+
+*枠* は三つのベクトルとして記述できる
+- 原点ベクトル: 平面上の絶対原点からの枠の原点の相対位置を指定する
+- 2つの辺ベクトル: 枠の原点を起点として、枠の2つの角の相対位置を指定する
+  - 2つの辺が垂直なら枠は長方形になる
+
+枠のコンストラクタとセレクタ
+- ~make-frame~: 3つのベクトルを引数にとり枠を作るコンストラクタ
+- ~origin-frame~: セレクタ
+- ~edge1-frame~: セレクタ
+- ~edge2-frame~: セレクタ
+
+画像は単位正方形内の座標（0 <= x,y <= 1）を使って記述する
+
+それぞれの枠には *枠座標マップ (frame coordinate map)* というものを関連付け、画像が枠に合うようにずらしたり拡大縮小したりするのに使う
+- マップはベクトル v=(x,y) を ベクトルの和にマップすることによって単位正方形を枠内に変換する。
+#+BEGIN_SRC 
+Origin(Frame) + x * Edge1(Frame) + y * Edge2(Frame)
+#+END_SRC
+
+例えば、 (0,0)は枠の原点に、(1,1)は原点と対角線上にある頂点に、(0.5,0.5)は枠の中心にマップされる
+
+枠座標マップは次の手続きによって作ることができる
+#+BEGIN_SRC scheme
+(define (frame-coord-map frame)
+  (lambda (v)
+    (add-vect
+      (origin-frame frame)
+      (add-vect (scale-vect (xcor-vect v) (edge1-frame frame))
+                (scale-vect (ycor-vect v) (edge2-frame frame))))))
+#+END_SRC
+
+frame-coord-mapをある枠に適用すると、「ベクトルが与えられるとベクトルを返す」 *手続き* を返す。
+- 引数ベクトルが単位正方形内にあれば、返り値のベクトルは枠内のものになる
+#+BEGIN_SRC scheme
+((frame-coord-map a-frame) (make-vect 0 0))
+;; 上記は以下と同じベクトルを返す
+(origin-frame a-frame)
+#+END_SRC
+
+** 練習問題
+*** 練習問題 2.46 ベクトルに対するデータ抽象化
+
+回答
+#+BEGIN_SRC scheme
+;; Vector's constructor and selectors
+(define (make-vect x y) (cons x y))
+(define (xcor-vect v) (car v))
+(define (ycor-vect v) (cdr v))
+
+;; add-vect: (x1, y1) + (x2, y2) = (x1 + x2, y1 + y2)
+(define (add-vect v1 v2)
+  (make-vect (+ (xcor-vect v1) (xcor-vect v2))
+             (+ (ycor-vect v1) (ycor-vect v2))))
+
+;; sub-vect: (x1, y1) - (x2, y2) = (x1 - x2, y1 - y2)
+(define (sub-vect v1 v2)
+  (make-vect (- (xcor-vect v1) (xcor-vect v2))
+             (- (ycor-vect v1) (ycor-vect v2))))
+
+;; scale-vect: s * (x, y) = (sx, sy)
+(define (scale-vect s v)
+  (make-vect (* s (xcor-vect v))
+             (* s (ycor-vect v))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; add-vect test
+TBD
+;; sub-vect test
+TBD
+;; scale-vect test
+TBD
+#+END_SRC
+
+*** 練習問題 2.47 枠の実装
+
+二種類の枠のコンストラクタ
+#+BEGIN_SRC scheme
+;; by list
+(define (make-frame origin edge1 edge2)
+  (list origin edge1 edge2))
+;; by cons
+(define (make-frame origin edge1 edge2)
+  (cons origin (cons edge1 edge2)))
+#+END_SRC
+
+回答: それぞれのコンストラクタに対するセレクタ
+#+BEGIN_SRC scheme
+;; for list
+(define (origin-frame f) (car f))
+(define (edge1-frame f) (cadr f))
+(define (edge2-frame f) (caddr f))
+
+;; for cons
+(define (origin-frame f) (car f))
+(define (edge1-frame f) (cadr f))
+(define (edge2-frame f) (cddr f))
+#+END_SRC
+
+動作確認
+TBD
+
+** ペインタ
+
+*ペインタ*: 枠を引数にとり、ある特定の画像をずらしたり拡大縮小したりして枠にフィットするように描画する手続き
+- つまり、pがペインタでfがフレームであれば、(p f) でfの中にpの画像を生成する
+
+基本ペインタがどのように実装されるかとう具体的なところはグラフィックシステムの特性と描画する画像のタイプに依存する。
+例えば2つの指定された点の間に線を引く ~draw-line~ という手続きを持っているとすると、waveペインタのような線画のペインタは次のような線分のリストから作ることができる
+#+BEGIN_SRC scheme
+(define (segments->painter segment-list)
+  (lambda (frame)
+    (for-each
+      (lambda (segment)
+        (draw-line
+          ((frame-coord-map frame)
+           (start-segment segment))
+          ((frame-coord-map frame)
+           (end-segment segment))))
+      segment-list)))
+#+END_SRC
+
+線分は単位正方形に対する座標を使って与えられる。
+リスト中のそれぞれの線分に対し、ペインタは線分の両端点を枠座標マップを使って変換し、変換した点の間に線を引く
+
+ペインタを手続きとして表現することは図形言語の中に強力な抽象化の壁を作る
+- 様々なグラフィック機能に基づいて色々な基本ペインタを作り、組み合わせことが可能
+- 枠を引数としてとり、その枠に合わせて何かを描くものであれば、どんな手続でもペインタとして使える
+  - waveペインタ: 線画
+  - rogersペインタ（注釈28参照）: 画像
+  - 等
+
+** 練習問題
+*** 練習問題 2.48 線分の定義
+
+回答
+#+BEGIN_SRC scheme
+(define (make-segment start end)
+  (cons start end))
+(define (start-segment segment) (car segment))
+(define (end-segment segment) (cdr segment))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; TBD
+#+END_SRC
+
+*** 練習問題 2.49
+
+回答
+#+BEGIN_SRC scheme
+;; a. 枠の輪郭
+;; (painter frame) という書き方になっていないので不十分
+(define (outline->painter frame)
+  (let ((v0 (make-vect 0 0))
+        (v1 (edge1-frame frame))
+        (v2 (edge2-frame frame)))
+    (let ((v3 (add-vect v2 v1)))
+      (segments->painter 
+        (list (make-segment v0 v1)
+              (make-segment v1 v3)
+              (make-segment v3 v2)
+              (make-segment v2 v0))))))
+
+;; b. 枠の対角線
+(define (diagonal->painter frame)
+  (let ((v0 (make-vect 0 0))
+        (v1 (edge1-frame frame))
+        (v2 (edge2-frame frame)))
+    (let ((v3 (add-vect v2 v1)))
+      (segments->painter 
+        (list (make-segment v0 v3)
+              (make-segment v1 v2))))))
+
+;; c. 枠の中点の菱形
+(define (rhombus->painter frame)
+  (let ((v0 (make-vect 0 0))
+        (v1 (edge1-frame frame))
+        (v2 (edge2-frame frame)))
+    (let ((v3 (add-vect v2 v1)))
+      (let ((v01 (scale-vect 0.5 (add-vect v0 v1)))
+            (v13 (scale-vect 0.5 (add-vect v1 v3)))
+            (v32 (scale-vect 0.5 (add-vect v3 v2)))
+            (v20 (scale-vect 0.5 (add-vect v2 v0))))
+        (segments->painter 
+          (list (make-segment v01 v13)
+                (make-segment v13 v32)
+                (make-segment v32 v20)
+                (make-segment v20 v01)))))))
+
+;; d. wave
+(TBD)
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; basic frame
+(define f1 (make-frame (make-vect 0.1 0.1)
+                       (make-vect 0.9 0.0)
+                       (make-vect 0.0 0.9)))
+
+;; a. outline->painter
+(show (outline->painter f1) f1)
+
+;; b. diagonal->painter
+(show (diagonal->painter f1) f1)
+
+;; c. rhombus->painter
+(show (rhombus->painter f1) f1)
+#+END_SRC
