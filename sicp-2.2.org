@@ -1782,7 +1782,6 @@ TBD
 データオブジェクトを組み合わせる”操作”は、その演算による組み合わせの結果自身が同じ演算によって組み合わせることが出来るなら「閉包性」を満たすという
 #+END_SRC
 
-
 ** 図形言語
 
 言語を記述する際のポイント
@@ -1983,13 +1982,22 @@ TBD
     (combine4 painter)))
 ;; 上と等価な書き方(脚注24)より
 (define flipped-pairs
-  (square-of-four identity flip-vert identyty flip-vert))
+  (square-of-four identity flip-vert identity flip-vert))
 ;; 実行するときは (flipped-pairs painter) と呼べば良い
 
 ;; square-limit by sqaure-of-four
 (define (square-limit painter n)
   (let ((combine4 (square-of-four flip-horiz identity rotate180 flip-vert)))
     (combine4 (corner-split painter n))))
+#+END_SRC
+
+時田さんコメント。
+#+BEGIN_SRC scheme
+(define (identity x) x)
+(define (flipped-pairs painter)
+  (let ((combine4 (square-of-four identity flip-vert
+                                  identity flip-vert)))
+    (combine4 painter)))
 #+END_SRC
 
 *TBD 動作確認*
@@ -2012,6 +2020,26 @@ right-splitとup-splitの定義
         (let ((smaller (iter painter (- n 1))))
           (op1 painter (op2 smaller smaller)))))
   (lambda (x y) (iter x y)))
+
+;; 時田さんコメントバージョン
+(define (split op1 op2)
+  (define (iter painter n)
+    (if (= n 0)
+        painter
+        (let ((smaller (iter painter (- n 1))))
+          (op1 painter (op2 smaller smaller)))))
+  iter)
+
+;; 時田さん回答
+(define (split op1 op2)
+  (lambda (painter n) ; lambdaで実装できた！
+    (if (= n 0) painter
+      (let ((smaller ((split op1 op2) painter (- n 1))))
+        (op1 painter (op2 smaller smaller))
+        )
+      )
+    )
+  )
 #+END_SRC
 
 *TBD 動作確認*
@@ -2032,11 +2060,14 @@ TBD
 
 枠のコンストラクタとセレクタ
 - ~make-frame~: 3つのベクトルを引数にとり枠を作るコンストラクタ
-- ~origin-frame~: セレクタ
-- ~edge1-frame~: セレクタ
-- ~edge2-frame~: セレクタ
+- ~origin-frame~: セレクタ: 枠の原点ベクトルを返す
+- ~edge1-frame~: セレクタ: 枠の辺1ベクトルを返す
+- ~edge2-frame~: セレクタ: 枠の辺2ベクトルを返す
 
-画像は単位正方形内の座標（0 <= x,y <= 1）を使って記述する
+画像は *単位正方形内* の座標（0 <= x,y <= 1）を使って記述する
+- (コメント)
+  - ペインタで描画する画像は全て単位正方形画像をであることを想定している？
+  - 画像を変形させるのはあくまでも枠の役割ということか
 
 それぞれの枠には *枠座標マップ (frame coordinate map)* というものを関連付け、画像が枠に合うようにずらしたり拡大縮小したりするのに使う
 - マップはベクトル v=(x,y) を ベクトルの和にマップすることによって単位正方形を枠内に変換する。
@@ -2044,7 +2075,7 @@ TBD
 Origin(Frame) + x * Edge1(Frame) + y * Edge2(Frame)
 #+END_SRC
 
-例えば、 (0,0)は枠の原点に、(1,1)は原点と対角線上にある頂点に、(0.5,0.5)は枠の中心にマップされる
+例えば、 (0,0)は枠の原点に、(1,1)は（枠の）原点と対角線上にある頂点に、(0.5,0.5)は枠の中心にマップされる
 
 枠座標マップは次の手続きによって作ることができる
 #+BEGIN_SRC scheme
@@ -2058,10 +2089,21 @@ Origin(Frame) + x * Edge1(Frame) + y * Edge2(Frame)
 
 frame-coord-mapをある枠に適用すると、「ベクトルが与えられるとベクトルを返す」 *手続き* を返す。
 - 引数ベクトルが単位正方形内にあれば、返り値のベクトルは枠内のものになる
+  - 返り値はペインタに適用する枠内に調整されたベクトル（座標）になる
 #+BEGIN_SRC scheme
 ((frame-coord-map a-frame) (make-vect 0 0))
 ;; 上記は以下と同じベクトルを返す
 (origin-frame a-frame)
+
+;; 動作確認
+(define a-frame (make-frame (make-vect 0.2 0.2)
+                            (make-vect 0.6 0.0)
+                            (make-vect 0.0 0.6)))
+
+((frame-coord-map a-frame) (make-vect 0 0)) ;; expected to (0.2 0.2)
+> (0.2 . 0.2)
+(origin-frame a-frame) ;; expected to (0.2 0.2)
+> (0.2 . 0.2)
 #+END_SRC
 
 ** 練習問題
@@ -2163,8 +2205,7 @@ TBD
 
 回答
 #+BEGIN_SRC scheme
-(define (make-segment start end)
-  (cons start end))
+(define (make-segment start end) (cons start end))
 (define (start-segment segment) (car segment))
 (define (end-segment segment) (cdr segment))
 #+END_SRC
@@ -2179,43 +2220,45 @@ TBD
 回答
 #+BEGIN_SRC scheme
 ;; a. 枠の輪郭
-;; (painter frame) という書き方になっていないので不十分
-(define (outline->painter frame)
-  (let ((v0 (make-vect 0 0))
-        (v1 (edge1-frame frame))
-        (v2 (edge2-frame frame)))
-    (let ((v3 (add-vect v2 v1)))
-      (segments->painter 
-        (list (make-segment v0 v1)
-              (make-segment v1 v3)
-              (make-segment v3 v2)
-              (make-segment v2 v0))))))
+(define outline->painter
+  (lambda (frame)
+    (let ((v0 (make-vect 0 0))
+          (v1 (edge1-frame frame))
+          (v2 (edge2-frame frame)))
+      (let ((v3 (add-vect v2 v1)))
+        ((segments->painter (list (make-segment v0 v1)
+                                  (make-segment v1 v3)
+                                  (make-segment v3 v2)
+                                  (make-segment v2 v0)))
+         frame)))))
 
 ;; b. 枠の対角線
-(define (diagonal->painter frame)
-  (let ((v0 (make-vect 0 0))
-        (v1 (edge1-frame frame))
-        (v2 (edge2-frame frame)))
-    (let ((v3 (add-vect v2 v1)))
-      (segments->painter 
-        (list (make-segment v0 v3)
-              (make-segment v1 v2))))))
+(define diagonal->painter
+  (lambda (frame)
+    (let ((v0 (make-vect 0 0))
+          (v1 (edge1-frame frame))
+          (v2 (edge2-frame frame)))
+      (let ((v3 (add-vect v2 v1)))
+        ((segments->painter (list (make-segment v0 v3)
+                                  (make-segment v1 v2)))
+         frame)))))
 
 ;; c. 枠の中点の菱形
-(define (rhombus->painter frame)
-  (let ((v0 (make-vect 0 0))
-        (v1 (edge1-frame frame))
-        (v2 (edge2-frame frame)))
-    (let ((v3 (add-vect v2 v1)))
-      (let ((v01 (scale-vect 0.5 (add-vect v0 v1)))
-            (v13 (scale-vect 0.5 (add-vect v1 v3)))
-            (v32 (scale-vect 0.5 (add-vect v3 v2)))
-            (v20 (scale-vect 0.5 (add-vect v2 v0))))
-        (segments->painter 
-          (list (make-segment v01 v13)
-                (make-segment v13 v32)
-                (make-segment v32 v20)
-                (make-segment v20 v01)))))))
+(define rhombus->painter
+  (lambda (frame)
+    (let ((v0 (make-vect 0 0))
+          (v1 (edge1-frame frame))
+          (v2 (edge2-frame frame)))
+      (let ((v3 (add-vect v2 v1)))
+        (let ((v01 (scale-vect 0.5 (add-vect v0 v1)))
+              (v13 (scale-vect 0.5 (add-vect v1 v3)))
+              (v32 (scale-vect 0.5 (add-vect v3 v2)))
+              (v20 (scale-vect 0.5 (add-vect v2 v0))))
+          ((segments->painter (list (make-segment v01 v13)
+                                    (make-segment v13 v32)
+                                    (make-segment v32 v20)
+                                    (make-segment v20 v01)))
+           frame))))))
 
 ;; d. wave
 (TBD)
@@ -2223,17 +2266,367 @@ TBD
 
 動作確認
 #+BEGIN_SRC scheme
-;; basic frame
+;; basic frame1
 (define f1 (make-frame (make-vect 0.1 0.1)
                        (make-vect 0.9 0.0)
                        (make-vect 0.0 0.9)))
 
+;; basic frame2-err (これだと edge1, edge2が予想と違う形で描画されてしまう)
+(define f2-err (make-frame (make-vect 0.2 0.2)
+                           (make-vect 0.8 0.2)
+                           (make-vect 0.2 0.8)))
+(define f2 (make-frame (make-vect 0.2 0.2)
+                       (make-vect 0.8 0.0) ;; frameのedgeはあくまでもframeの原点を起点として考える
+                       (make-vect 0.0 0.8)))
+
+
 ;; a. outline->painter
-(show (outline->painter f1) f1)
+(show outline->painter f1)
+(show outline->painter f2)
 
 ;; b. diagonal->painter
-(show (diagonal->painter f1) f1)
+(show diagonal->painter f1)
 
 ;; c. rhombus->painter
-(show (rhombus->painter f1) f1)
+(show rhombus->painter f1)
 #+END_SRC
+
+** ペインタの変形と組み合わせ
+
+ペインタに対する演算(flip-vertやbeside等)は、 *引数の枠から導出した枠に対して、そのペインタを呼び出すようなペインタを作る* という仕組みで動いている
+- ペインタの動作内容を知っている必要はなく、枠をどのように変形するかのみを知っていればよい
+
+ペインタ操作は ~transform-painter~ という手続きに基づいている
+
+transform-painter
+- 引数: ペインタ, 枠をどのように変形するかという情報（ベクトル表現の三つの点で、それぞれ新しい枠の原点と2つの枠の辺ベクトルの終点を示す）
+- 評価結果: 新しいペインタ
+新しいペインタは、ある枠に対して呼ばれたらその枠を変形し、その変形後の枠に対して元のペインタを呼び出す
+#+BEGIN_SRC scheme
+(define (transform-painter painter origin corner1 corner2)
+  (lambda (frame)
+    (let ((m (frame-coord-map frame)))
+      (let ((new-origin (m origin)))
+        (painter (make-frame
+                  new-origin
+                  (sub-vect (m corner1) new-origin)
+                  (sub-vect (m corner2) new-origin)))))))
+#+END_SRC
+
+ペインタを上下逆にする(frip-vert)は次のようにする。
+#+BEGIN_SRC scheme
+(define (flip-vert painter)
+  (transform-painter painter
+                     (make-vect 0.0 1.0)   ; new origin
+                     (make-vect 1.0 1.0)   ; new end of edge1
+                     (make-vect 0.0 0.0))) ; new end of edge2
+#+END_SRC
+
+*（コメント）*
+- flip-vertは、反転して上下逆にする。x軸による線対称となる。
+- そもそもペインタは単位正方形の画像を想定している
+- transform-painterにわたす三つのベクトルは単位正方形の枠に対してどう変形させるかを指定している。
+- 正方形でない枠をtransform-painterで生成した結果ペインタにわたすと、
+  最初にその枠がframe-coord-map（ベクトルを受け取り補正されたベクトルを返す手続き）に渡される（m）
+- new-originはmに元々のoriginベクトルを適用したもの（補正後のorigin）
+- painterに渡す枠は、new-originと、
+  - mによって補正されたedge1（x方向ベクトル）とnew-originとの差
+
+
+右上四分の一のフレームは以下になる。
+#+BEGIN_SRC scheme
+(define (shrink-to-upper-right painter)
+  (transform-painter painter (make-vect 0.5 0.5)
+                             (make-vect 1.0 0.5)
+                             (make-vect 0.5 1.0)))
+#+END_SRC
+
+画像を反時計回りに90度回転させる変形
+#+BEGIN_SRC scheme
+(define (rotate90 painter)
+  (transform-painter painter
+                     (make-vect 1.0 0.0)
+                     (make-vect 1.0 1.0)
+                     (make-vect 0.0 0.0)))
+#+END_SRC
+
+画像を枠の中心方向に潰す変形
+#+BEGIN_SRC scheme
+(define (squash-inwards painter)
+  (transform-painter painter
+                     (make-vect 0.0 0.0)
+                     (make-vect 0.65 0.35)
+                     (make-vect 0.35 0.65)))
+#+END_SRC
+
+beside手続きの実装
+#+BEGIN_SRC scheme
+(define (beside painter1 painter2)
+  (let ((split-point (make-vect 0.5 0.0)))
+    (let ((paint-left
+           (transform-painter painter1
+                              (make-vect 0.0 0.0)
+                              split-point
+                              (make-vect 0.0 1.0)))
+          (paint-right
+           (transform-painter painter2
+                              split-point
+                              (make-vect 1.0 0.0)
+                              (make-vect 0.5 1.0))))
+      (lambda (frame)
+        (paint-left frame)
+        (paint-right frame)))))
+#+END_SRC
+
+ペインタについてbesideが知っておくべきことは、それぞれのペインタが指定
+した枠に何かを描画するということだけで、その他は何も知る必要はない。
+
+** 練習問題
+*** 練習問題 2.50 flip-horiz, rotate180, rotate270
+
+回答
+#+BEGIN_SRC scheme
+;; flip-horiz
+(define (flip-horiz painter)
+  (transform-painter painter
+                     (make-vect 1.0 0.0)
+                     (make-vect 0.0 0.0)
+                     (make-vect 1.0 1.0)))
+;; rotate180
+(define (rotate180 painter)
+  (transform-painter painter
+                     (make-vect 1.0 1.0)
+                     (make-vect 0.0 1.0)
+                     (make-vect 1.0 0.0)))
+;; rotate270
+(define (rotate270 painter)
+  (transform-painter painter
+                     (make-vect 0.0 1.0)
+                     (make-vect 0.0 0.0)
+                     (make-vect 1.0 1.0)))
+;; another answer
+(define (rotate270 painter)
+  (rotate90 (rotate180 painter)))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; test frame
+(define f1 (make-frame (make-vect 0.1 0.1)
+                       (make-vect 0.8 0.0)
+                       (make-vect 0.0 0.8)))
+
+;; flip-horiz
+(show (flip-horiz rogers))
+(show (flip-horiz rogers) f1)
+;; rotate180
+(show (rotate180 rogers))
+(show (rotate180 rogers) f1)
+;; rotate270
+(show (rotate270 rogers))
+(show (rotate270 rogers) f1)
+#+END_SRC
+
+TBD画像を貼り付ける
+
+*** 練習問題 2.51 belowの実装
+
+回答
+#+BEGIN_SRC scheme
+;; below 1st
+(define (below painter1 painter2)
+  (let ((split-point (make-vect 0.0 0.5)))
+    (let ((paint-bottom
+            (transform-painter painter1
+                               (make-vect 0.0 0.0)
+                               (make-vect 1.0 0.0)
+                               split-point))
+          (paint-top
+            (transform-painter painter2
+                               split-point
+                               (make-vect 1.0 0.5)
+                               (make-vect 0.0 1.0))))
+      (lambda (frame)
+        (paint-bottom frame)
+        (paint-top frame)))))
+
+;; below another implementation
+(define (below painter1 painter2)
+  (rotate270 (beside (rotate90 painter2) (rotate90 painter1))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; test frame
+(define f1 (make-frame (make-vect 0.1 0.1)
+                       (make-vect 0.8 0.0)
+                       (make-vect 0.0 0.8)))
+
+;; below 1st
+(show (below rogers rogers))
+(show (below rogers rogers) f1)
+#+END_SRC
+
+*** 練習法
+(show rogers frm1)
+(save-picture "/tmp/rogers-frm1.png")
+(show (flip-vert rogers) frm1)
+(save-picture "/tmp/flipped-rogers-frm1.png")
+(show rogers frm2)
+(save-picture "/tmp/rogers-frm2.png")
+(show (flip-vert rogers) frm2)
+(save-picture "/tmp/flipped-rogers.png")
+
+** 頑健な設計のための言語レベル
+
+- 図形言語は手続きとデータによる抽象化の練習
+- 基本的なデータ抽象化であるペインタは手続きによる表現により実装され、 異なる基礎的な描画機能を統一したやり方で扱うことができるようにしている
+- 結合手段は閉包性を満たしている
+
+階層化設計 (stratified design)
+- 複雑なシステムは一連の言語によって記述される一連のレベルとして構造化されるべきという概念
+- それぞれのレベルはそのレベルで基本とされる部品を組み合わせて構築される
+- 各レベルで構築された部品は次のレベルで基本部品として使われる
+- 階層化設計のそれぞれのレベルで使われる言語は、その詳細さのレベルに合った基本要素、結合手段、抽象化の手段を備える
+
+階層化設計は複雑なシステムのエンジニアリングのあらゆるところにで出てくる。例えば計算機工学では
+- 抵抗、トランジスタを組み合わせて（アナログ回路の言語を使って記述して）ANDゲートやORゲート等の部品を作る
+- ANDゲートやORゲート等はデジタル回路設計の言語では基本要素となる
+  - これらを組み合わせてプロセッサ、バス構造、メモリシステムを構築する
+- コンピュータアーキテクチャに適した言語を使ってそれらを組み合わせてコンピュータを作る
+- コンピュータはネットワーク相互接続を記述するのに的sた言語を使って組み合わされて分散システムを構成する
+  - (コメント)今でいうならクラウドプロバイダの各種サービスを組み合わせて（分散）システムを設計することに相当していると思う
+
+図形言語は階層化設計の小さな例
+- 基本要素（基本ペインタ）は、segments->painterの線分のリストやrogersのようなペインタの濃淡の詳細点や線を規定する言語を使って作られたもの
+- これらの基本要素を組み合わせることやbesideやbelowのような幾何学的な結合器に焦点を当てていた
+- belowやbesideを言語の基本要素とみなし更に高いレベルでの作業もおこなった
+- square-of-four演算は幾何学的な結合器を組み合わせる際のよくあるパターンを捉えている
+
+階層化設計は頑健（robust）なプログラムを作りやすくする
+- 仕様の小さな変更がプログラム上でも相応に小さな変更で済むということ
+
+** 練習問題
+*** 練習問題 2.52 square-limitの変更
+
+回答
+#+BEGIN_SRC scheme
+    ;; a. wave基本ペインタの変更
+    ;;   wave (extended from Jakld document)
+    ;;   waveの定義だけ修正すれば良く、他に変更箇所はない
+    (define wave
+      (let ((p01 (make-vect 0.40 1.00))
+	    (p02 (make-vect 0.60 1.00))
+	    (p03 (make-vect 0.00 0.80))
+	    (p04 (make-vect 0.35 0.80))
+	    (p05 (make-vect 0.65 0.80))
+	    (p06 (make-vect 0.00 0.60))
+	    (p07 (make-vect 0.30 0.60))
+	    (p08 (make-vect 0.40 0.60))
+	    (p09 (make-vect 0.60 0.60))
+	    (p10 (make-vect 0.70 0.60))
+	    (p11 (make-vect 0.20 0.55))
+	    (p12 (make-vect 0.30 0.55))
+	    (p13 (make-vect 0.35 0.50))
+	    (p14 (make-vect 0.65 0.50))
+	    (p15 (make-vect 0.20 0.45))
+	    (p16 (make-vect 1.00 0.40))
+	    (p17 (make-vect 0.50 0.20))
+	    (p18 (make-vect 1.00 0.20))
+	    (p19 (make-vect 0.25 0.00))
+	    (p20 (make-vect 0.40 0.00))
+	    (p21 (make-vect 0.60 0.00))
+	    (p22 (make-vect 0.75 0.00))
+	    (pa1 (make-vect 0.40 0.80)) ;; added pa1 to pa9
+	    (pa2 (make-vect 0.45 0.85))
+	    (pa3 (make-vect 0.49 0.80))
+	    (pa4 (make-vect 0.51 0.80))
+	    (pa5 (make-vect 0.55 0.85))
+	    (pa6 (make-vect 0.60 0.80))
+	    (pa7 (make-vect 0.40 0.70))
+	    (pa8 (make-vect 0.50 0.65))
+	    (pa9 (make-vect 0.60 0.70)))
+	(segments->painter
+	  (list (make-segment p01 p04)
+		(make-segment p04 p08)
+		(make-segment p08 p07)
+		(make-segment p07 p11)
+		(make-segment p11 p03)
+		(make-segment p06 p15)
+		(make-segment p15 p12)
+		(make-segment p12 p13)
+		(make-segment p13 p19)
+		(make-segment p20 p17)
+		(make-segment p17 p21)
+		(make-segment p22 p14)
+		(make-segment p14 p18)
+		(make-segment p16 p10)
+		(make-segment p10 p09)
+		(make-segment p09 p05)
+		(make-segment p05 p02)
+		(make-segment pa1 pa2) ;; added from here
+		(make-segment pa2 pa3)
+		(make-segment pa4 pa5)
+		(make-segment pa5 pa6)
+		(make-segment pa7 pa8)
+		(make-segment pa8 pa9)))))
+
+    ;; b. corner-splitの変更
+    ;; up-splitとright-splitの画像を2つではなく1つだけ使うようにする
+    (define (right-split painter n)
+      (if (= n 0)
+	  painter
+	  (let ((smaller (right-split painter (- n 1))))
+	    ;;(beside painter (below smaller smaller)))))
+	    (beside painter smaller))))
+    (define (up-split painter n)
+      (if (= n 0)
+	  painter
+	  (let ((smaller (up-split painter (- n 1))))
+	    ;;(below painter (beside smaller smaller)))))
+	    (below painter smaller))))
+
+    (define (corner-split painter n)
+      (if (= n 0)
+	  painter
+	  (let ((up (up-split painter (- n 1)))
+		(right (right-split painter (- n 1))))
+	    ;; (let ((top-left (beside up up))
+	    ;;       (bottom-right (below right right))
+	    ;;       (corner (corner-split painter (- n 1))))
+	    (let ((top-left up)
+		  (bottom-right right)
+		  (corner (corner-split painter (- n 1))))
+	      (beside (below painter top-left)
+		      (below bottom-right corner))))))
+
+  ;; c. square-limitを修正して、大きなrogersが外を向くようにする
+  (define (square-limit painter n)
+    (let ((combine4 (square-of-four flip-horiz identity rotate180 flip-vert)))
+      ;; (combine4 (corner-split painter n))))
+      (combine4 (corner-split (flip-horiz painter) n))))
+
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; a.
+;; before
+(show wave)
+;; after
+(show wave)
+
+;; b.
+;; before
+(show (corner-split wave 4))
+;; after
+(show (corner-split wave 4))
+
+;; c.
+;; before
+(show (square-limit rogers 4))
+;; after
+(show (square-limit rogers 4))
+#+END_SRC
+
+
