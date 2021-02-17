@@ -206,7 +206,6 @@ TBD
 #+END_SRC
 
 
-
 ** リストに対するマップ
 
 - 非常に便利な演算としてリストのそれぞれの要素に何らかの変換を適用し、
@@ -346,7 +345,6 @@ consの引数を逆にしても上手くいかない理由
 (cons (cons (cons (cons '() 1) 4) 9) 16)
 ((((() . 1) . 4) . 9) . 16)
 #+END_SRC
-
 
 *** 練習問題 2.23
 
@@ -1052,7 +1050,7 @@ fringe等で単一のリストに変換する必要がある
 > (0 1 1 4 9 25 64 169 441 1156 3025)
 #+END_SRC
 
-例2: 性数列の中の奇数のものの二乗の積を計算
+例2: 正数列の中の奇数のものの二乗の積を計算
 #+BEGIN_SRC scheme
 (define (product-of-squares-of-odd-elements sequence)
   (accumulate * 1 (map square (filter odd? sequence))))
@@ -1614,7 +1612,175 @@ reverseのテンプレート
     手続きという理解でよいか？
     - 列の列の列の場合は列の列になる
 
-*** 練習問題 2.42 
+*** 練習問題 2.42 n-queenの実装
+
+解き方: 各列にひとつのクイーンを置きながらチェス盤を横に移動していく
+- 最初のk-1列にk-1個のクイーンを置くパターンをすべて生成済みだと想定する
+- それぞれのパターンに対してk列目のそれぞれの行にクイーンを置いていって、位置の集合を”拡張”したものを生成する
+- これらをフィルタして、k列目のクイーンが他のクイーンに利かないものだけを残す
+こうすると、最初のk列にk個のクイーンを置く全てのパターンの列ができ、こ
+のプロセスを続けることでパズルの全ての回答が得られることになる。
+
+回答の雛形
+#+BEGIN_SRC scheme
+(define (queens board-size)
+  (define (queen-cols k)
+    (if (= k 0)
+        (list empty-board)
+        (filter
+          (lambda (positions) (safe? k positions))
+          (flatmap
+            (lambda (rest-of-queens)
+              (map (lambda (new-row)
+                     (adjoin-position new-row
+                                      k
+				      rest-of-queens))
+                   (enumerate-interval 1 board-size)))
+            (queen-cols (- k 1))))))
+   (queen-cols board-size))
+#+END_SRC
+
+- *queen-cols*: 盤の最初のk列にクイーンを置く全てのパターンの列を返す手続き
+- *rest-of-queens*: 最初のk-1列にk-1個のクイーンを置くパターンの一つを表す引数
+- *rew-row*: k列目のクイーンを置く候補となる行（の番号）を表す引数
+- *adjoin-position*: 位置集合に対する表現方法と位置集合に新しい行列の位置を追加する手続き
+- *empty-board*: 位置の空集合
+- *safe?*: 位置集合に対してk列目のクイーンが他のクイーンに利いていないかを調べる手続き
+
+
+実装対象の手続き
+#+BEGIN_SRC scheme
+;; 位置集合に新しい行・列の位置を追加する
+(define (adjoin-position new-row k rest-of-queens) <??>)
+;; 位置の空集合（初期ボードを表現）
+(define empty-board <??>)
+;; k列目のクイーンが他のクイーンの利き筋にはいっていないかをテストする
+(define (safe? k positions) <??>)
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+  ;; template
+  (define (queens board-size)
+    (define (queen-cols k)
+      (if (= k 0)
+	  (list empty-board)
+	  (filter
+	    (lambda (positions) (safe? k positions))
+	    (flatmap
+	      (lambda (rest-of-queens)
+		(map (lambda (new-row)
+		       (adjoin-position new-row
+					k
+					rest-of-queens))
+		     (enumerate-interval 1 board-size)))
+	      (queen-cols (- k 1))))))
+    (queen-cols board-size))
+
+;; 補助関数
+(define (enumerate-interval low high)
+  (if (> low high)
+      '()
+      (cons low (enumerate-interval (+ low 1) high))))
+(define (accumulate op init seq)
+  (if (null? seq)
+      init
+      (op (car seq) (accumulate op init (cdr seq)))))
+(define (flatmap proc seq)
+  (accumulate append '() (map proc seq)))
+
+;; 以下回答
+  (define (last seq)
+     (if (null? (cdr seq))
+	 (car seq)
+	 (last (cdr seq))))
+
+  (define empty-board '())
+
+  (define (adjoin-position new-row k rest-of-queens) ;; 引数kは必要？
+    (append rest-of-queens (list new-row)))
+
+  (define (safe? k positions)
+    (let ((qk (last positions)))
+      (define (iter i pos)
+	(let ((qi (car pos))
+              (distance (- k i)))
+	  (if (>= i k)
+	      #t
+	      (if (or (= qi qk)
+		      (= qi (- qk distance))
+		      (= qi (+ qk distance)))
+		  #f
+		  (iter (+ i 1) (cdr pos))))))
+      (iter 1 positions)))
+  ;; (define (safe? k positions)
+  ;;   (let ((qk (last positions)))
+  ;;     (define (iter i pos)
+  ;;       (if (>= i k)
+  ;;           #t
+  ;;           (if (or (= (car pos) qk)
+  ;;                   (= (car pos) (- qk (- k i)))
+  ;;                   (= (car pos) (+ qk (- k i))))
+  ;;               #f
+  ;;               (iter (+ i 1) (cdr pos)))))
+  ;;     (iter 1 positions)))
+
+  ;; test
+  (safe? 3 '(1 2 3)) ;; expected to #f
+  (safe? 4 '(1 2 3 4)) ;; expected to #f
+  (safe? 4 '(2 4 1 3)) ;; expected to #t
+  (safe? 4 '(2 4 2 3)) ;; expected to #f
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(queens 1) ;; expected to ((1))
+> ((1))
+(queens 2) ;; expected to ()
+> ()
+(queens 3) ;; expected to ()
+> ()
+(queens 4) ;; including ((2 4 1 3) (3 1 4 2))
+> ((2 4 1 3) (3 1 4 2))
+(queens 5)
+> ((1 3 5 2 4) (1 4 2 5 3) (2 4 1 3 5) (2 5 3 1 4) (3 1 4 2 5) (3 5 2 4 1)
+ (4 1 3 5 2) (4 2 5 3 1) (5 2 4 1 3) (5 3 1 4 2))
+(length (queens 8))
+> 92
+#+END_SRC
+
+
+練習等
+#+BEGIN_SRC scheme
+;; リストの最後の要素を取り出す
+
+  ;; 一番内側のmapの動作理解
+  (define (mytest n k r) (display n) (display k) (display r) (newline))
+  (map (lambda (new-row) (mytest new-row 'k 'rest-of-queens)) (list 1 2 3 4))
+  1krest-of-queens
+  2krest-of-queens
+  3krest-of-queens
+  4krest-of-queens
+  (#<undef> #<undef> #<undef> #<undef>)
+
+  (map (lambda (new-row) (mytest new-row 'k 'rest-of-queens)) '())
+  ()
+
+  (flatmap (lambda (roq) (map (lambda (new-row) (mytest new-row 'k roq)) (list 1 2 3 4))) '())
+  ()
+
+  (flatmap (lambda (roq) (map (lambda (new-row) (mytest new-row 'k roq)) (list 1 2 3 4))) '(()))
+  1k()
+  2k()
+  3k()
+  4k()
+  ;; これより、flatmapのlambda式の引数rest-of-queensは、初期状態の位置集
+  ;; 合として単純な空リストではなく、二重の空リストを渡すべきだということが分かった。
+  ;; (追記) 実際に動かしてみて、実際は二重の空リストである必要はなかったことに気づいた。
+#+END_SRC
+
+
+*** 練習問題 2.42 (obsoleted)
 
 queensの雛形
 #+BEGIN_SRC scheme
@@ -1637,7 +1803,7 @@ queensの雛形
             (queen-cols (- k 1))))))
    (queen-cols board-size))
 
-;; 実装要諦手続き
+;; 実装対象の手続き
 (define (adjoin-position new-row k rest-of-queens) <??>) ;; 位置集合に新しい行・列の位置を追加する
 (define empty-board <??>)                                ;; 位置の空集合（初期ボードを表現）
 (define (safe? k positions) <??>)                        ;; k列目のクイーンが他のクイーンの利き筋にはいっていないかをテストする
@@ -1766,6 +1932,25 @@ board-size=4としたときの動作を考える
 #+END_SRC
 
 *** 練習問題 2.43
+
+Louisの間違いコード
+#+BEGIN_SRC scheme
+  (define (queens board-size)
+    (define (queen-cols k)
+      (if (= k 0)
+	  (list empty-board)
+	  (filter
+	    (lambda (positions) (safe? k positions))
+	    (flatmap
+	      (lambda (new-low)
+		(map (lambda (rest-of-queens)
+		       (adjoin-position new-row
+					k
+					rest-of-queens))
+		     (queen-cols (- k 1))))
+	      (enumerate-interval 1 board-size)))))
+    (queen-cols board-size))
+#+END_SRC
 TBD
 
 * 2.2.4 例: 図形言語
@@ -2231,6 +2416,8 @@ TBD
                                   (make-segment v3 v2)
                                   (make-segment v2 v0)))
          frame)))))
+;; 時田さんコメント
+単位正方形の四角形を描くだけでよいのでは？
 
 ;; b. 枠の対角線
 (define diagonal->painter
@@ -2242,6 +2429,7 @@ TBD
         ((segments->painter (list (make-segment v0 v3)
                                   (make-segment v1 v2)))
          frame)))))
+;; 時田さんコメント 単位正方形の四角形の対角線を描くでも良い
 
 ;; c. 枠の中点の菱形
 (define rhombus->painter
@@ -2259,6 +2447,8 @@ TBD
                                     (make-segment v32 v20)
                                     (make-segment v20 v01)))
            frame))))))
+;; 時田さんコメント 単位正方形の四角形の対角線を描くでも良い
+
 
 ;; d. wave
 (TBD)
@@ -2467,6 +2657,21 @@ TBD画像を貼り付ける
 (show (below rogers rogers) f1)
 #+END_SRC
 
+*(コメント)*
+
+- besideとbelowの回答で、最後のlambdaは式を2つ並べたものになっているが
+  これはどういう意味かを把握するのに少し時間がかかった。
+- lambdaの中身は、REPLで普通に式を実行していくのと同じことになるのだろう
+#+BEGIN_SRC scheme
+repl> (+ 1 2) ;; 式1
+repl> (* 2 4) ;; 式2
+...
+#+END_SRC
+上記は式1の評価後に式2が評価される。lambdaの中身もこの意味と等しいと考
+えられるので、beside (belowも) のlambdaは式を2つ並べてもエラーにはなら
+ない。ポイントとしては、 *lambdaの中身はREPL(として考えて良い)* ということ。
+
+
 *** 練習法
 (show rogers frm1)
 (save-picture "/tmp/rogers-frm1.png")
@@ -2629,4 +2834,5 @@ TBD画像を貼り付ける
 (show (square-limit rogers 4))
 #+END_SRC
 
-
+** 時田さんの解説
+- 線形写像とアフィン写像を素直に実装する方法の紹介

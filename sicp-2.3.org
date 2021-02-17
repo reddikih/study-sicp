@@ -1,0 +1,1390 @@
+#+TITLE: SICP 2.3 記号データ
+
+この節では任意の記号をデータとして扱う能力を導入して言語の表現能力を拡張する。
+
+* 2.3.1 クォート
+記号を使って複合データを作れるとしたら以下のようなリストが使えることになる
+#+BEGIN_SRC scheme
+(a b c d)
+(23 45 17)
+((Norah 12) (Molly 9) (Anna 7) (Lauren 6) (Charlotte 4))
+#+END_SRC
+
+記号を含むリストは我々の言語の次のような式と同じように見える
+#+BEGIN_SRC scheme
+(* (+ 23 45) (+ x 9))
+(define (fact n) (if (= n 1) 1 (* n (fact (- n 1)))))
+#+END_SRC
+
+- 記号の操作するためには、データオブジェクトを *クォート(quote)* する。
+- クォートは自然言語である語句そのものを扱いたいときに使われる慣例で、Schemeでもそれを踏襲する。
+- クォートにより、リストや記号について、式として評価の対象にするのではなく、データオブジェクトとして扱うことが出来るようになる。
+- Schemeではクォートするオブジェクトの前に単一引用符(') をひとつだけ置く。
+  - シングルクォートは次のオブジェクトをクォートするという意味になっている
+
+#+BEGIN_SRC scheme
+(define a 1)
+(define b 2)
+(list a b)
+> (1 2)
+(list 'a 'b)
+> (a b)
+(list 'a b)
+> (a 2)
+
+(car '(a b c))
+> a
+(cdr '(a b c))
+> (b c)
+'()
+> () ;; これで空リストが得られるので以降は変数nilは不要
+#+END_SRC
+
+*（脚注34）について*
+- 引用符は次に来る完全な式を quoteを使って包んで、 (quote <expression>) を作るということを一文字に省略したものにすぎない
+  - e.g.)
+    - ~'a <=> (quote a)~
+    - ~'(a b c) <=> (quote (a b c))~
+#+BEGIN_SRC scheme
+;; (car '(a b c)) という式は以下を評価することで構築出来る
+(list 'car (list 'quote '(a b c)))
+-> (list (quote car) (list (quote quote) (quote (a b c)))) ;; 適用順序評価だとquoteを先に評価してしまいそいうだが、quoteは特殊形式だから遅延評価されるのかな？そういう想定だと下の簡約は納得できる
+-> ((quote car) ((quote quote) (quote (a b c))))
+-> (car (quote (a b c))) ;; 元の式と等価
+#+END_SRC
+
+~eq?~ について
+- 2つの記号を引数にとり、それが同じであるかどうかをテストする
+
+eq?を使うと ~memq~ 手続きを実装出来る。
+- *memq*: 記号とリストを引数にとり、記号がリストにふくまれていなければ
+  memqは偽を返し、そうでなければそのリスト中で記号が最初に見つかったと
+  ころから始まるサブリストを返す
+#+BEGIN_SRC scheme
+(define (memq item x)
+  (cond ((null? x) #f) ;; false -> #f に修正
+        ((eq? item (car x)) x)
+        (else (memq item (cdr x)))))
+
+;; 動作例
+(memq 'apple '(pear banana prune)) ;; expected to #f
+> #f
+(memq 'apple '(x (apple sauce) y apple pear)) ;; expected to (apple pear)
+> (apple pear) ;; (apple sauce)はappleとは等しくない
+#+END_SRC
+
+クォートの（まだ完全に理解できていないので）不思議な動き
+#+BEGIN_SRC 
+gosh> 'ab'cd
+ab
+gosh> cd
+#+END_SRC
+
+** 練習問題
+*** 練習問題 2.53
+回答&動作確認
+#+BEGIN_SRC scheme
+(list 'a 'b 'c) ;; expected (a b c)
+> (a b c)
+(list (list 'george)) ;; expected ((george))
+> ((george))
+(cdr '((x1 x2) (y1 y2))) ;; expected ((y1 y2))
+> ((y1 y2))
+(cadr '((x1 x2) (y1 y2))) ;; expected (y1 y2)
+> (y1 y2)
+(pair? (car '(a short list))) ;; expected #f
+> #f
+(memq 'red '((red shoes) (blue socks))) ;; expected #f
+> #f
+(memq 'red '(red shoes blue socks)) ;; expected (red shoes blue socks)
+> (red shoes blue socks)
+#+END_SRC
+
+#+BEGIN_SRC scheme
+(eq? '(a b c) (list 'a 'b 'c))
+> #f
+(equal? '(a b c) (list 'a 'b 'c))
+> #t
+#+END_SRC
+*** 練習問題 2.54 equals?の実装
+
+回答
+#+BEGIN_SRC scheme
+(define (equal? a b)
+  (cond ((eq? a b) #t)
+        ((and (pair? a) (pair? b))
+           (and (equals? (car a) (car b))
+                (equals? (cdr a) (cdr b))))
+        (else #f)))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(equal? '(this is a list) '(this is a list)) ;; expected to #t
+> #t
+(equal? '(this is a list) '(this (is a) list)) ;; expected to #f
+
+(equal? '(this is a list) '()) ;; expected to #f
+> #f
+(equal? '() '()) ;; expected to #t
+> #t
+(equal? 'a 1) ;; expected to #f
+> #f
+(equal? 1 1) ;; expected to #t
+> #t
+#+END_SRC
+
+*** 練習問題 2.55
+
+以下の式がquoteを返すことの説明
+#+BEGIN_SRC scheme
+(car ''abracadabra)
+> 
+#+END_SRC
+
+回答
+- シングルクォート（'<exp>）は内部で特殊形式 ~(quote <exp>)~ という形に変形され、一番先頭（外側）のquoteのみが評価される（と思われる）
+  - つまり特殊形式なので適用順序評価（手続きの引数を先に評価する）とは違う評価結果となる。
+- 最初に ~''abracadabra~ は ~(quote (quote abracadabra))~ として評価され、最初のquoteが評価された段階でcarに渡される。
+- carが評価するのは ~(quote abracadabra)~ ということになるので、~quote~ が表示される
+#+BEGIN_SRC scheme
+;; 置換モデルで考えると以下の挙動になる
+(car ''abracadabra)
+(car (quote (quote abracadabra))) ;; quoteは特殊形式なので、おそらく一番外側のquoteのみが評価される
+(car (quote abracadabra))
+quote
+#+END_SRC
+
+(2020/12/19 追記)
+上の回答は一部違っている気がする。クォートが(quote ...)に展開されても評価自体はまだされていないと思われる。
+つまり、 ~(car ''abra)~ は ~(car (quote (quote abra)))~ になって、carの値が ~quote~ ということなんじゃないだろうか。
+以下それを確認するためのテスト
+#+BEGIN_SRC scheme
+  ;; assuming ''abra as (quote (quote abra))
+  (car ''abra) ;; expected to quote
+  > quote
+  (cdr ''abra) ;; expected to ((quote abra))
+  > (abra) ;; なんで？
+  (cadr ''abra) ;; expected to quote
+  > abra   ;; なんで？
+
+  ;; 数値の演算手続きで確認
+  (car '(+ (* 3 2) 1)) ;; expected to +
+  > +
+  ;; もしcdrで取り出すリストの先頭要素が手続きだったらその評価結果が返さ
+  ;; れる挙動の場合、以下は(6 1)が返る。もしリストの先頭要素が手続きでも
+  ;; cdrで取り出すだけなら評価されないという場合、((* 3 2) 1) が返るはず。
+  (cdr '(+ (* 3 2) 1)) ;; expected to (6 1) or ((* 3 2) 1)
+  > ((* 3 2) 1)
+#+END_SRC
+この解釈はやっぱり違う。
+
+おそらく最初の解釈の方が正しいのかもしれない。Schemeのドキュメント
+([[http://www.r6rs.org/final/html/r6rs/r6rs-Z-H-14.html#node_sec_11.4.1][r6rs]])の11.4.1では以下のように書いてある。
+#+BEGIN_SRC 
+11.4.1  Quotation
+(quote <datum>)‌‌syntax 
+Syntax: <Datum> should be a syntactic datum.
+
+Semantics: (quote <datum>) evaluates to the datum value represented by <datum> (see section 4.3). This notation is used to include constants.
+#+END_SRC
+
+quoteは特殊形式で、引数を適用順序で単純には評価しないのはその通りで、
+#+BEGIN_SRC scheme
+'aaa
+aaa
+
+''aaa
+(quote aaa)
+
+'''aaa
+(quote (quote aaa))
+#+END_SRC
+となる。つまり、上記は
+#+BEGIN_SRC scheme
+(car 'aaa)
+(car (quote aaa))
+(car aaa)
+aaa
+
+(car ''aaa)
+(car (quote (quote aaa)))
+(car (quote aaa)) ;; quoteの評価結果なのでこのcarの引数はこれ以上評価されない
+quote
+
+(car '''aaa)
+(car (quote (quote (quote aaa))))
+(car (quote (quote aaa))) ;; quoteの評価結果なのでこのcarの引数はこれ以上評価されない
+quote
+#+END_SRC
+となる。
+
+他の例は
+#+BEGIN_SRC scheme
+(cdr 'aaa)
+(cdr (quote aaa))
+(cdr aaa) ;; expected to error
+gosh> (cdr 'aaa)
+*** ERROR: pair required, but got aaa
+Stack Trace:
+_______________________________________
+  0  (cdr 'aaa)
+        at "(standard input)":104
+  1  (eval expr env)
+        at "/usr/local/Cellar/gauche/0.9.9/share/gauche-0.97/0.9.9/lib/gauche/interactive.scm":269
+;; 予想通りエラーになった。pairを想定しているのにaaaが渡されている
+
+(cdr ''aaa)
+(cdr (quote (quote aaa)))
+(cdr (quote aaa))
+(aaa) ;; goshで確認済み
+
+(cdr '''aaa)
+(cdr (quote (quote (quote aaa))))
+(cdr (quote (quote aaa)))
+((quote aaa)) ;; goshで確認済み
+
+;; 番外編
+
+''aa'aa ;; これは
+(quote (quote aa (quote aa)))
+(quote aa (quote aa)) ;; ではなく、
+
+''aa 'aa ;; と解釈されるみたい
+(quote (quote aa))
+(quote aa) ;; １つ目の結果
+
+(quote aa)
+aa         ;; ２つ目の結果
+;; 以下gaucheでの実行結果。上記の動きになっている。
+gosh> ''aa'aa
+(quote aa)
+gosh> aa
+#+END_SRC
+
+クォートは連続しているとquote手続きのネストとして扱われるが、間に何か
+別の記号等が入ると別々のクォートとして認識されるようだ。
+
+これはどうか
+#+BEGIN_SRC scheme
+''aa('aa) ;; -> error (aa)は不正な適用と怒られる
+''aa'(aa) ;; -> (quote aa) と (aa) になる。
+#+END_SRC
+
+*最終回答*
+
+- ~'~ は 特殊形式 ~(quote)~ の糖衣構文なので、 ~'<expression>~ は ~<expression>~ という評価結果となる。
+- quoteは特殊形式なので、その引数は評価されずにそのままquoteに渡される（適用順序評価どおりには評価されない）
+- そうすると、 ~''abra~ は ~(quote (quote abra))~ となり、外側のquoteだけが評価され ~(quote abra)~ となる。
+- 上記がcarに渡されるので、 ~(car (quote abra))~ となりその評価結果は ~quote~ になる。
+  - carの引数は一番外側のquoteの結果なので、さらにquoteが評価されることはない
+
+
+備考
+#+BEGIN_SRC scheme
+'(a b c)
+(quote (a b c))
+(a b c)
+
+(list 'a 'b 'c)
+(list (quote a) (quote b) (quote c))
+(list a b c)
+(a b c)
+
+(list ''a ''b ''c)
+(list (quote (quote a)) (quote (quote b)) (quote (quote c)))
+(list (quote a) (quote b) (quote c))
+((quote a) (quote b) (quoate c))
+
+(list '(+ 1 2) 3)
+(list (quote (+ 1 2)) 3)
+(list (+ 1 2) 3)
+((+ 1 2) 3)
+#+END_SRC
+
+* 2.3.4 例: 記号微分
+
+記号操作、データ抽象化の別の例として、代数式の記号微分を行う手続きの設計について考える。
+
+手続きは
+- 引数として代数式と変数をとる
+- その変数に関するその式の導関数を返す
+とする。
+
+記号微分プログラムは、有理数システム（2.1.1節）と同じデータ抽象化戦略に従う
+- まず和、積、変数といった抽象オブジェクトの上で動く微分アルゴリズムを定義するところからはじめる
+- それら抽象オブジェクトがどのように表現されるべきかは（最初は）考えない
+
+** 抽象データによる微分プログラム
+
+以下を踏まえてセレクタ、コンストラクタ、述語を実装する手続きができているとする
+- もし代数式の表現手段があるとするなら、ある式が和なのか積なのか定数なのか変数なのか識別できるはず
+- また式から構成要素を抽出することもできるはず
+- 構成要素から式を構築することもできるはず
+#+BEGIN_SRC scheme
+(variable? e)          ;; eは変数か？         述語
+(same-variable? v1 v2) ;; v1とv2は同じ変数か？ 述語
+(sum? e)               ;; eは和か？           述語
+(addend e)             ;; 和eの加数（第一項）  selector
+(augend e)             ;; 和eの被加数（第二項） selector
+(make-sum a1 a2)       ;; a1とa2の和を構築する constructor
+(product? e)           ;; eは積か？           述語
+(multiplier e)         ;; 積eの乗数           selector
+(multiplicand e)       ;; 積eの被乗数         selector
+(make-product m1 m2)   ;; m1とm2の積を構築する constructor
+#+END_SRC
+
+上記と ~number?~ （数値かどうかを判断する基本述語）を使って微分規則を ~derive~ 手続きとして表現する。
+- 抽象データによって表現されているので、正しくセレクタとコンストラクタを設計する限り代数式をどう表現しても動くはず。
+#+BEGIN_SRC scheme
+(define (deriv exp var)
+  (cond ((number? exp) 0)
+        ((variable? exp) (if (same-variable? exp var) 1 0))
+        ((sum? exp) (make-sum (deriv (addend exp) var)
+                              (deriv (augend exp) var)))
+        ((product? exp)
+         (make-sum
+           (make-product (multiplier exp)
+                         (deriv (multiplicand exp) var))
+           (make-product (deriv (multiplier exp) var)
+                         (multiplicand exp))))
+        (else
+          (error "unknown expression type: DERIV" exp))))
+#+END_SRC
+
+動作例
+#+BEGIN_SRC scheme
+TBD
+#+END_SRC
+
+** 代数式を表現する
+
+Lispと同じように括弧で括った前置記法を使うとすると、微分問題に対するデータ表現は次のようになる。
+#+BEGIN_SRC scheme
+;; 変数は記号である。基本述語symbol?で識別する 
+(define (variable? x) (symbol? x))
+
+;; 二つの変数は、それらを表現する記号がeq?であれば等しい
+(define (same-variable? v1 v2)
+  (and (variable? v1) (variable? v2) (eq? v1 v2)))
+
+;; 和と積は、リストとして構築する
+(define (make-sum a1 a2) (list '+ a1 a2)) ;; (+ a1 a2) ここでquoteが使われている
+(define (make-product m1 m2) (list '* m1 m2))
+
+;; 和は、最初の要素が記号+であるリストである
+(define (sum? x) (and (pair? x) (eq? (car x) '+)))
+
+;; 加数は、和のリストの二つ目の項である (+ a1 a2) の a1
+(define (addend s) (cadr s))
+
+;; 被加数は、和のリストの三つ目の項である (+ a1 a2) の a2
+(define (augend s) (caddr s))
+
+;; 積は、最初の要素が記号*であるリストである
+(define (product? x) (and (pair? x) (eq? (car x) '*)))
+
+;; 乗数は、積のリストの二つ目の項である
+(define (multiplier p) (cadr p))
+
+;; 被乗数は、積のリストの三つ目の項である
+(define (multiplicand p) (caddr p))
+#+END_SRC
+
+derivの動作確認
+#+BEGIN_SRC scheme
+(deriv '(+ x 3) 'x)
+> (+ 1 0)
+(deriv '(* x y) 'x)
+> (+ (* x 0) (* 1 y))
+(deriv '(* (* x y) (+ x 3)) 'x)
+> (+ (* (* x y) (+ 1 0)) (* (+ (* x 0) (* 1 y)) (+ x 3)))
+#+END_SRC
+
+値は正しいが答えが最も単純な形に簡約されていない。
+この問題への対処にはderivには手を加えないで、各種constructorに変更を加える。
+
+まずmake-sumに変更を加える
+  - 両方の加数が数値であれば、それらを足し合わせて和を返す
+  - 加数の1つが0であればもう一つの加数のみを返す
+#+BEGIN_SRC scheme
+(define (=number? exp num) (and (number? exp) (= exp num)))
+
+(define (make-sum a1 a2)
+  (cond ((=number? a1 0) a2)
+        ((=number? a2 0) a1)
+        ((and (number? a1) (number? a2)) (+ a1 a2))
+        (else (list '+ a1 a2))))
+#+END_SRC
+
+同様にmake-productに変更を加え
+- 0には何を掛けても0で
+- 1に何かを掛けてるとその何か自身になる
+という規則を加える
+#+BEGIN_SRC scheme
+(define (make-product m1 m2)
+  (cond ((or (=number? m1 0) (=number? m2 0)) 0)
+        ((=number? m1 1) m2)
+        ((=number? m2 1) m1)
+        ((and (number? m1) (number? m2)) (* m1 m2))
+        (else (list '* m1 m2))))
+#+END_SRC
+
+先程の三つの例は以下のようになる。
+#+BEGIN_SRC scheme
+(deriv '(+ x 3) 'x)
+> 1
+(deriv '(* x y) 'x)
+> y
+(deriv '(* (* x y) (+ x 3)) 'x)
+> (+ (* x y) (* y (+ x 3)))
+#+END_SRC
+
+** 練習問題
+*** 練習問題 2.56 微分規則の追加
+
+回答
+#+BEGIN_SRC scheme
+;; preliminary
+(define (exponentiation? x) (and (pair? x) (eq? (car x) '**)))
+(define (make-exponentiation base exponent)
+  (cond ((=number? exponent 0) 1)
+        ((=number? exponent 1) base)
+        (else (list '** base exponent))))
+(define (base exp) (cadr exp))
+(define (exponent exp) (caddr exp))
+
+;; enhanced deriv
+(define (deriv exp var)
+  (cond ((number? exp) 0)
+        ((variable? exp) (if (same-variable? exp var) 1 0))
+        ((sum? exp) (make-sum (deriv (addend exp) var)
+                              (deriv (augend exp) var)))
+        ((product? exp)
+         (make-sum
+           (make-product (multiplier exp)
+                         (deriv (multiplicand exp) var))
+           (make-product (deriv (multiplier exp) var)
+                         (multiplicand exp))))
+        ((exponentiation? exp)
+         (make-product
+           (exponent exp)
+           (make-product
+             (make-exponentiation (base exp) (- (exponent exp) 1))
+             (deriv (base exp) var))))
+        (else
+          (error "unknown expression type: DERIV" exp))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; test for exponentiation
+(make-exponentiation 2 0) ;; expected to 1
+> 1
+(make-exponentiation 2 1) ;; expected to 2
+> 2
+(deriv '(** x 0) 'x) ;; expected to 0?
+(deriv '(** x 1) 'x) ;; expected to 1
+(deriv '(** x 4) 'x) ;; expected to (* 4 (** x 3))
+> (* 4 (** x 3))
+#+END_SRC
+
+*** 練習問題 2.57 任意の数の項の和と積への拡張
+
+回答
+#+BEGIN_SRC scheme
+;; 補助関数
+(define (=number? exp num) (and (number? exp) (= exp num)))
+(define (deriv exp var)  ;; derivには手を加えない
+  (cond ((number? exp) 0)
+        ((variable? exp) (if (same-variable? exp var) 1 0))
+        ((sum? exp) (make-sum (deriv (addend exp) var)
+                              (deriv (augend exp) var)))
+        ((product? exp)
+         (make-sum
+           (make-product (multiplier exp)
+                         (deriv (multiplicand exp) var))
+           (make-product (deriv (multiplier exp) var)
+                         (multiplicand exp))))
+        ((exponentiation? exp)
+         (make-product
+           (exponent exp)
+           (make-product
+             (make-exponentiation (base exp) (- (exponent exp) 1))
+             (deriv (base exp) var))))
+        (else
+          (error "unknown expression type: DERIV" exp))))
+(define (make-sum a1 a2)
+  (cond ((=number? a1 0) a2)
+        ((=number? a2 0) a1)
+        ((and (number? a1) (number? a2)) (+ a1 a2))
+        (else (list '+ a1 a2))))
+(define (make-product m1 m2)
+  (cond ((or (=number? m1 0) (=number? m2 0)) 0)
+        ((=number? m1 1) m2)
+        ((=number? m2 1) m1)
+        ((and (number? m1) (number? m2)) (* m1 m2))
+        (else (list '* m1 m2))))
+
+;;==== 本回答 ====
+;; (define (augend s) (cddr s))
+;; (define (multiplicand p) (caddr p))
+(define (augend s)
+  (if (null? (cdddr s))
+      (caddr s)
+      (append (list '+) (cddr s))))
+(define (multiplicand p)
+  (if (null? (cdddr p))
+      (caddr p)
+      (append (list '*) (cddr p))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(augend '(+ a b))       ;; expected to b
+> b
+(augend '(+ a b c))     ;; expected to (+ b c)
+> (+ b c)
+(augend '(+ a b c d))   ;; expected to (+ b c d)
+> (+ b c d)
+
+(multiplicand '(* a b)) ;; expected to b
+> b
+(multiplicand '(* a b c)) ;; expected to (* b c)
+> (* b c)
+(multiplicand '(* a b c d)) ;; expected to (* b c d)
+> (* b c d)
+
+(deriv '(+ x 3) 'x) ;; expected to 1
+> 1
+(deriv '(* x y) 'x) ;; expected to y
+> y
+(deriv '(* x y (+ x 3)) 'x) ;; expected to (+ (* x y) (* y (+ x 3)))
+> (+ (* x y) (* y (+ x 3)))
+#+END_SRC
+
+練習
+#+BEGIN_SRC scheme
+;; 可変長引数ではa2はリストになっている。a2の要素が一つだけでもちゃんとリストになっている
+(define (ms a1 . a2) (append (list a1) a2))
+(ms 'a 'b 'c)
+> (a b c)
+(define (ms a1 . a2) a2)
+(ms 'a 'b 'c)
+> (b c)
+(ms 'a 'b)
+> (b)
+#+END_SRC
+
+適切なコンストラクタとセレクタが設計できていれば修正はごく一部分のみで済む
+
+*** 練習問題 2.58
+
+代数式を表現する述語、セレクタ、コンストラクタを変更するだけで異なる表現を扱うように修正する。
+
+**** a. 中置記法での代数式の微分
+
+微分プログラム
+#+BEGIN_SRC scheme
+(define (=number? exp num) (and (number? exp) (= exp num)))
+(define (deriv exp var)  ;; derivには手を加えない
+  (cond ((number? exp) 0)
+        ((variable? exp) (if (same-variable? exp var) 1 0))
+        ((sum? exp) (make-sum (deriv (addend exp) var)
+                              (deriv (augend exp) var)))
+        ((product? exp)
+         (make-sum
+           (make-product (multiplier exp)
+                         (deriv (multiplicand exp) var))
+           (make-product (deriv (multiplier exp) var)
+                         (multiplicand exp))))
+        ((exponentiation? exp)
+         (make-product
+           (exponent exp)
+           (make-product
+             (make-exponentiation (base exp) (- (exponent exp) 1))
+             (deriv (base exp) var))))
+        (else
+          (error "unknown expression type: DERIV" exp))))
+(define (make-sum a1 a2)
+  (cond ((=number? a1 0) a2)
+        ((=number? a2 0) a1)
+        ((and (number? a1) (number? a2)) (+ a1 a2))
+        (else (list '+ a1 a2))))
+(define (make-product m1 m2)
+  (cond ((or (=number? m1 0) (=number? m2 0)) 0)
+        ((=number? m1 1) m2)
+        ((=number? m2 1) m1)
+        ((and (number? m1) (number? m2)) (* m1 m2))
+        (else (list '* m1 m2))))
+#+END_SRC
+
+元々の述語、セレクタ、コンストラクタ
+#+BEGIN_SRC scheme
+;; procedures for variables
+(define (variable? x) (symbol? x))
+(define (same-variable? v1 v2)
+  (and (variable? v1) (variable? v2) (eq? v1 v2)))
+
+;; procedures for sum
+(define (sum? x) (and (pair? x) (eq? (car x) '+)))
+(define (make-sum a1 a2) (list '+ a1 a2))          ;; constructor
+(define (addend s) (cadr s))                       ;; selector: (+ a b) => a
+(define (augend s) (caddr s))                      ;; selector: (+ a b) => b
+
+;; procedures for multiplication
+(define (product? x) (and (pair? x) (eq? (car x) '*)))
+(define (make-product m1 m2) (list '* m1 m2))      ;; constructor
+(define (multiplier p) (cadr p))                   ;; selector: (* a b) => a
+(define (multiplicand p) (caddr p))                ;; selector: (* a b) => b
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+;; procedures for sum
+(define (sum? x) (and (pair? x) (eq? (cadr x) '+)))
+(define (addend s) (car s))                        ;; selector: (a + b) => a
+(define (augend s) (caddr s))                      ;; selector: (a + b) => b
+(define (make-sum a1 a2)                           ;; constructor
+  (cond ((=number? a1 0) a2)
+        ((=number? a2 0) a1)
+        ((and (number? a1) (number? a2)) (+ a1 a2))
+        (else (list a1 '+ a2))))
+
+;; procedures for multiplication
+(define (product? x) (and (pair? x) (eq? (cadr x) '*)))
+(define (multiplier p) (car p))                     ;; selector: (a * b) => a
+(define (multiplicand p) (caddr p))                 ;; selector: (a * b) => b
+(define (make-product m1 m2)                        ;; constructor
+  (cond ((or (=number? m1 0) (=number? m2 0)) 0)
+        ((=number? m1 1) m2)
+        ((=number? m2 1) m1)
+        ((and (number? m1) (number? m2)) (* m1 m2))
+        (else (list m1 '* m2))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; for sum test
+(sum? '(a + b)) ;; expected to #t
+(sum? '(+ b c)) ;; expected to #f
+(make-sum 'a 'b) ;; expected to (a + b)
+(addend '(a + b)) ;; expected to a
+(augend '(a + b)) ;; expected to b
+
+;; for multiplication test
+(product? '(a * b)) ;; expected to #t
+(product? '(* a b)) ;; expected to #f
+(make-product 'a 'b) ;; expected to (a * b)
+(multiplier '(a + b)) ;; expected to a
+(multiplicand '(a + b)) ;; expected to b
+
+;; deriv test
+(deriv '(x + 3) 'x) ;; expected to 1
+(deriv '(x * y) 'x) ;; expected to y
+(deriv '((x * y) * (x + 3)) 'x) ;; expected to ((x * y) + (y * (x + 3)))
+#+END_SRC
+
+**** b. 標準的な代数記法への拡張
+
+出来なそう。
+
+* 2.3.3 例: 集合を表現する
+
+- 集合の表現は（代数式のリスト表現に比べ）あまり明らかではない
+- 集合とはただの異なるオブジェクトの集まり
+- 集合に使われる演算を規定することによって（データ抽象化の手法をつかうことによって）”集合”を定義できる
+
+集合の演算
+- *union-set*: 二つの集合の和集合を返す
+- *intersection-set*: 二つの集合の共通部分を返す
+- *element-of-set?*: 与えられた要素が集合の構成要素であるかどうかを判定する述語
+- *adjoin-set*: オブジェクトと集合を引数にとり、オブジェクトを集合に追加してその集合を返す
+
+データ抽象化という視座から見ると、上の解釈と整合性があるものでさえあれば、これらの演算を実装するのにどのような表現でも自由に設計できる
+
+** 順序なしリストとしての集合
+
+集合の表現手段（の一つ）
+- 要素が2回以上現れることがないリスト
+- 空集合は空リスト
+
+まず最初にelement-of-set?を実装する。
+#+BEGIN_SRC scheme
+(define  (element-of-set? x set)
+  (cond ((null? set) #f)
+        ((equal? x (car set)) #t)
+        (else (element-of-set? x (cdr set)))))
+#+END_SRC
+
+
+#+BEGIN_SRC 
+（補足）
+SICPでeq?ではなくequal?を使っているため、集合の要素は記号である必要はないと言っている。
+これはどういうことか？
+
+eq?はobj1とobj2がメモリ上で同じオブジェクトを表しているかをテストする。equalはリスト等では再帰的に対応する要素同士をequal?で比較する。リスト同士でなければeqv?と同じになる。
+eqv?はobj1とobj2が数値や文字列の場合はその値が正確に等しいかをテストし、それら以外の比較の場合はeq?と同じテストを行う。
+
+ので、equal?で各集合要素とxをeqv?で比較するということになる。だとしてもまだ「集合の要素は記号である必要はない」理由は腹落ち出来ていない。
+#+END_SRC
+
+element-of-set?を使ってadjoin-setを書ける。
+#+BEGIN_SRC scheme
+(define (adjoin-set x set)
+  (if (element-of-set? x set)
+      set
+      (cons x set)))
+#+END_SRC
+
+intersection-setは再帰的な戦略を使う。
+- もしset2とset1のcdrとの共通部分を作ることが出来るなら、set1のcarをそれに含めるかどうかを決めるだけで十分
+- これは(car set1)がset2にも含まれているかどうかによって決まる
+つまりset1のcarがset2に含まれるなら、それは共通要素になるはずなので、
+それを含めた上で(cdr set1)とset2のintersectionを再帰的に計算していく。
+もし、(car set1)がset2に含まれていないなら、(car set1)は無視して良いの
+で、(cdr set1)とset2についてintersectionを再帰的に計算していけば良い。
+#+BEGIN_SRC scheme
+(define (intersection-set set1 set2)
+  (cond ((or (null? set1) (null? set2)) '())
+        ((element-of-set? (car set1) set2)
+         (cons (car set1) (intersection-set (cdr set1) set2)))
+        (else (intersection-set (cdr set1) set2))))
+#+END_SRC
+
+** 練習問題
+*** 練習問題 2.59 union-set演算の実装
+
+解き方はintersection-setと同じように考えられる。
+- もしset2と(cdr set1)の和集合が作れるなら、(car set1)をそれに含めるかを決める
+- これは(car set1)がset2に含まれていなければ和集合に追加し、そうでなければ(car set1)は無視すれば良い
+
+回答
+#+BEGIN_SRC scheme
+(define (union-set set1 set2)
+  (cond ((null? set1) set2)
+        ((element-of-set? (car set1) set2)
+         (union-set (cdr set1) set2))
+        (else (cons (car set1) (union-set (cdr set1) set2)))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(union-set '() '()) ;; expected to ()
+> ()
+(union-set '(1 2) '(3 4 5)) ;; expected to (1 2 3 4 5) 順不同
+> (1 2 3 4 5)
+(union-set '(1) '(1 2 3)) ;; expected to (1 2 3)
+> (1 2 3)
+(union-set '(1 2) '(1 2 3)) ;; expected to (1 2 3)
+> (1 2 3)
+(union-set '() '(1 2)) ;; expected to (1 2)
+> (1 2)
+#+END_SRC
+
+*** 練習問題 2.60 重複集合
+
+ここまでの集合演算
+#+BEGIN_SRC scheme
+(define  (element-of-set? x set)
+  (cond ((null? set) #f)
+        ((equal? x (car set)) #t)
+        (else (element-of-set? x (cdr set)))))
+(define (adjoin-set x set)
+  (if (element-of-set? x set)
+      set
+      (cons x set)))
+(define (intersection-set set1 set2)
+  (cond ((or (null? set1) (null? set2)) '())
+        ((element-of-set? (car set1) set2)
+         (cons (car set1) (intersection-set (cdr set1) set2)))
+        (else (intersection-set (cdr set1) set2))))
+(define (union-set set1 set2)
+  (cond ((null? set1) set2)
+        ((element-of-set? (car set1) set2)
+         (union-set (cdr set1) set2))
+        (else (cons (car set1) (union-set (cdr set1) set2)))))
+#+END_SRC
+
+回答
+#+BEGIN_SRC scheme
+;; element-of-set?は変更無し
+(define  (element-of-set? x set)
+  (cond ((null? set) #f)
+        ((equal? x (car set)) #t)
+        (else (element-of-set? x (cdr set)))))
+;; adjoin-setはelement-of-set?を除去
+(define (adjoin-set x set) (cons x set))
+;; intersection-setは変更無し
+(define (intersection-set set1 set2)
+  (cond ((or (null? set1) (null? set2)) '())
+        ((element-of-set? (car set1) set2)
+         (cons (car set1) (intersection-set (cdr set1) set2)))
+        (else (intersection-set (cdr set1) set2))))
+;; union-setはelement-of-set?の判定ケースを除去
+(define (union-set set1 set2)
+  (cond ((null? set1) set2)
+        (else (cons (car set1) (union-set (cdr set1) set2)))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(element-of-set? 1 '()) ;; expected to #f
+(element-of-set? 1 '(2 3)) ;; expected to #f
+(element-of-set? 1 '(1)) ;; expected to #t
+(element-of-set? 1 '(1 2 3)) ;; expected to #t
+
+(adjoin-set 1 '()) ;; expected to (1)
+(adjoin-set 1 '(2 3)) ;; expected to (1 2 3)
+(adjoin-set 1 '(1 2 3)) ;; expected to (1 1 2 3)
+(adjoin-set 2 '(1 2 3)) ;; expected to (2 1 2 3)
+
+(intersection-set '() '()) ;; expected to ()
+(intersection-set '(1 2) '(3 4 5)) ;; expected to ()
+(intersection-set '(1 2) '(1 2 3 4)) ;; expected to (1 2)
+(intersection-set '(1 2 1) '(1 2 3 4)) ;; expected to (1 2 1) これで正しい？
+
+(union-set '() '()) ;; expected to ()
+(union-set '(1) '(2)) ;; expected to (1 2)
+(union-set '(1) '(2 3 4)) ;; expected to (1 2 3 4)
+(union-set '(1 2) '(2 3 4)) ;; expected to (1 2 2 3 4)
+(union-set '(1 2 1 3) '(2 3 4)) ;; expected to (1 2 1 3 2 3 4)
+#+END_SRC
+
+それぞれの効率
+- element-of-set?
+  - 変わらない。増加オーダーは \theta(n)
+- adjoin-set
+  - 効率は良くなる。増加オーダーは \theta(1)
+- intersection-set
+  - 変わらない。増加オーダーは \theta(n^2)
+- union-set
+  - 効率は良くなる。増加オーダーは \theta(n)
+
+この表現が向いている応用
+- ログ等の記録が主な目的の用途には向いている？
+
+** 順序つきリストとしての集合
+
+集合演算を早くする方法の一つとして、集合の要素が昇順に並ぶように表現を返るというものがある。
+
+そのためには二つのオブジェクトを比較してどちらが大きいか判断するための方法が必要
+- 記号を辞書順に比較したり
+- オブジェクトに一意の数値を割り振ることに決めて対応する数値によって比較する、等
+
+ここでは簡単のため、集合の要素が数値である場合についてのみ考える（>と<によって要素の比較が可能）
+
+数値の集合表現は要素を昇順に並べたものを使う
+- 前節では {1 3 6 10} を表すのに要素をどのように並べても良かったが、新
+  しい表現では(1 3 6 10)というリストしか許可しない。
+
+順序付けるメリット
+- element-of-set?の探索処理を効率化でき、で要素を全て調べる必要がなくなる
+- 探している項目よりも大きい要素に出会ったら、その項目が集合内に無いということがわかる
+
+#+BEGIN_SRC scheme
+(define (element-of-set? x set)
+  (cond ((null? set) #f)
+        ((= x (car set)) #t)
+        ((< x (car set)) #f)
+        (else (element-of-set? x (cdr set)))))
+#+END_SRC
+
+この場合の効率化
+- 平均 \theta(n/2) => \theta(n) だけど一応効率化されている
+
+intersection-setではさらに目覚ましい高速化が達成出来る
+- 順序なしでは: \theta(n^2)
+- 順序ありでは: \theta(n)
+  - 必要なステップは最大でもset1とset2の大きさの合計（n+n=2n）なので \theta(n)
+
+#+BEGIN_SRC scheme
+(define (intersection-set set1 set2)
+  (if (or (null? set1) (null? set2))
+      '()
+      (let ((x1 (car set1)) (x2 (car set2)))
+        (cond ((= x1 x2)
+               (cons x1 (intersection-set (cdr set1) (cdr set2))))
+              ((< x1 x2)
+               (intersection-set (cdr set1) set2))
+              ((< x2 x1)
+               (intersection-set set1 (cdr set2)))))))
+#+END_SRC
+
+** 練習問題
+*** 練習問題 2.61 順序つき表現でのadjoin-setの実装
+
+実装戦略
+- xと(car set)を比較し、
+  - x = (car set) なら、setを返す
+  - x > (car set) なら、xと(cdr set) を再帰的に調べる
+  - x < (car set) なら、それまでのsetにxを末尾に追加し、さらに(cdr set)をappendする(consでも大丈夫か)
+
+回答
+#+BEGIN_SRC scheme
+;; original adjoin-set
+(define (adjoin-set x set)
+  (if (element-of-set? x set)
+      set
+      (cons x set)))
+
+;;==== 回答 =====
+(define (adjoin-set x set)
+  (define (iter lower rest)
+    (cond ((null? rest) (append lower (list x)))
+          ((= x (car rest)) set)
+          ((< x (car rest)) (append lower (list x) rest))
+          (else (iter (append lower (list (car rest)))
+                      (cdr rest)))))
+  (iter '() set))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(adjoin-set 1 '()) ;; expected to (1)
+(adjoin-set 1 '(2 4 5)) ;; expected to (1 2 4 5)
+(adjoin-set 2 '(2 4 5)) ;; expected to (2 4 5)
+(adjoin-set 3 '(2 4 5)) ;; expected to (2 3 4 5)
+#+END_SRC
+
+増加オーダーの考察
+- TBD
+
+*** 練習問題 2.62 順序つきリストに対するunion-set実装
+
+回答
+#+BEGIN_SRC scheme
+;; original union-set
+(define (union-set set1 set2)
+  (cond ((null? set1) set2)
+        ((element-of-set? (car set1) set2)
+         (union-set (cdr set1) set2))
+        (else (cons (car set1) (union-set (cdr set1) set2)))))
+
+;;==== 回答 ====
+(define (union-set set1 set2)
+  (cond ((null? set1) set2)
+        ((null? set2) set1)
+        (else
+          (if (null? set1)
+              set2
+              (let ((x1 (car set1)) (x2 (car set2)))
+                (cond ((= x1 x2)
+                       (cons x1 (union-set (cdr set1) (cdr set2))))
+                      ((< x1 x2)
+                       (cons x1 (union-set (cdr set1) set2)))
+                      ((> x1 x2)
+                       (cons x2 (union-set set1 (cdr set2))))))))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(union-set '() '()) ;; expected to ()
+(union-set '(1) '(2)) ;; expected to (1 2)
+(union-set '(1) '(2 3 4)) ;; expected to (1 2 3 4)
+(union-set '(1 2) '(2 3 4)) ;; expected to (1 2 3 4)
+(union-set '(2 4 6) '(1 3 5)) ;; expected to (1 2 3 4 5 6)
+#+END_SRC
+
+** 二分木としての集合
+
+集合の要素を木という形式で配置すれば順序つきリスト表現をさらに改善できる
+- 木の各ノードは集合の要素を一つ持つ（それをノードの”エントリ”と呼ぶ）
+- 他の二つのノードへのリンクも持っている
+  - 左のリンクは、そのノードより小さな要素を指している
+  - 右のリンクは、そのノードより大きな要素を指している
+
+木の効率性の話し
+- TBD
+
+木のリスト表現
+- 各ノードは、ノードのエントリ、左部分木、右部分木の三つの項目のリストとなる
+#+BEGIN_SRC scheme
+(define (entry tree) (car tree))                              ;; selector
+(define (left-branch tree) (cadr tree))                       ;; selector
+(define (right-branch tree) (caddr tree))                     ;; selector
+(define (make-tree entry left right) (list entry left right)) ;; constructor
+#+END_SRC
+
+木を使ったelement-of-set?実装
+#+BEGIN_SRC scheme
+(define (element-of-set? x set)
+  (cond ((null? set) #f)
+        ((= x (entry set)) #t)
+        ((< x (entry set)) (element-of-set? x (left-branch tree)))
+        ((> x (entry set)) (element-of-set? x (right-branch tree)))))
+#+END_SRC
+
+集合に項目を追加する操作も同様に実装でき、必要ステップ数は \theta(\log n) になる
+#+BEGIN_SRC scheme
+(define (adjoin-set x set)
+  (cond ((null? set) (make-tree x '() '()))
+        ((= x (entry set)) set)
+        ((< x (entry set)) (make-tree (entry set)
+                                      (adjoin-set x (left-branch set))
+                                      (right-branch set)))
+        ((> x (entry set)) (make-tree (entry set)
+                                      (left-branch set)
+                                      (adjoin-set x (right-branch set))))))
+#+END_SRC
+
+** 練習問題
+*** 練習問題 2.63 tree->listの解析
+
+tree->list実装
+#+BEGIN_SRC scheme
+(define (tree->list-1 tree)
+  (if (null? tree)
+      '()
+      (append (tree->list-1 (left-branch tree))
+              (cons (entry tree)
+                    (tree->list-1 (right-branch tree))))))
+
+(define (tree->list-2 tree)
+  (define (copy-to-list tree result-list)
+    (if (null? tree)
+        result-list
+        (copy-to-list (left-branch tree)
+                      (cons (entry tree)
+                            (copy-to-list (right-branch tree) result-list)))))
+  (copy-to-list tree '()))
+#+END_SRC
+
+- a.)
+#+BEGIN_SRC scheme
+;; test data
+(define tree '())
+(define fig2.16a
+  (adjoin-set 11
+   (adjoin-set 9
+    (adjoin-set 5
+     (adjoin-set 1
+      (adjoin-set 3
+       (adjoin-set 7 tree)))))))
+(define fig2.16b
+  (adjoin-set 11
+   (adjoin-set 9
+    (adjoin-set 5
+     (adjoin-set 7
+      (adjoin-set 1
+       (adjoin-set 3 tree)))))))
+(define fig2.16c
+  (adjoin-set 11
+   (adjoin-set 7
+    (adjoin-set 9
+     (adjoin-set 1
+      (adjoin-set 3
+       (adjoin-set 5 tree)))))))
+(define fig2.17
+  (adjoin-set 11
+   (adjoin-set 9
+    (adjoin-set 7
+     (adjoin-set 5
+      (adjoin-set 3
+       (adjoin-set 1 tree)))))))
+
+;; 動作確認
+(tree->list-1 fig2.16a)
+> (1 3 5 7 9 11)
+(tree->list-1 fig2.16b)
+> (1 3 5 7 9 11)
+(tree->list-1 fig2.16c)
+> (1 3 5 7 9 11)
+(tree->list-1 fig2.17)
+> (1 3 5 7 9 11)
+
+(tree->list-2 fig2.16a)
+> (1 3 5 7 9 11)
+(tree->list-2 fig2.16b)
+> (1 3 5 7 9 11)
+(tree->list-2 fig2.16c)
+> (1 3 5 7 9 11)
+(tree->list-2 fig2.17)
+#+END_SRC
+
+上記動作結果より、二つの手続きは全ての木に対して同じ結果を生成すると考えられる。
+
+- b.) 増加オーダーのステップ数の考察
+
+#+BEGIN_SRC scheme
+(define test1
+  (lambda (set)
+    (define (tree->list-1 tree)
+      (display "1 ")
+      (if (null? tree)
+          '()
+          (append (tree->list-1 (left-branch tree))
+                  (cons (entry tree)
+                        (tree->list-1 (right-branch tree))))))
+    (tree->list-1 set)))
+
+(define test2
+  (lambda (set)
+    (define (tree->list-2 tree)
+      (define (copy-to-list tree result-list)
+        (display "1 ")
+        (if (null? tree)
+            result-list
+            (copy-to-list (left-branch tree)
+                          (cons (entry tree)
+                                (copy-to-list (right-branch tree) result-list)))))
+      (copy-to-list tree '()))
+    (tree->list-2 set)))
+
+;; # of tree->list-1 calls
+(test1 fig2.16a)
+1 1 1 1 1 1 1 1 1 1 1 1 1 (1 3 5 7 9 11)
+(test1 fig2.16b)
+1 1 1 1 1 1 1 1 1 1 1 1 1 (1 3 5 7 9 11)
+(test1 fig2.16c)
+1 1 1 1 1 1 1 1 1 1 1 1 1 (1 3 5 7 9 11)
+(test1 fig2.17)
+1 1 1 1 1 1 1 1 1 1 1 1 1 (1 3 5 7 9 11)
+
+;; # of tree->list-2 calls
+(test2 fig2.16a)
+1 1 1 1 1 1 1 1 1 1 1 1 1 (1 3 5 7 9 11)
+(test2 fig2.16b)
+1 1 1 1 1 1 1 1 1 1 1 1 1 (1 3 5 7 9 11)
+(test2 fig2.16c)
+1 1 1 1 1 1 1 1 1 1 1 1 1 (1 3 5 7 9 11)
+(test2 fig2.17)
+1 1 1 1 1 1 1 1 1 1 1 1 1 (1 3 5 7 9 11)
+#+END_SRC
+
+上記結果より、バランスの取れた木を変換する際に同じステップ数の増加オーダーを持っているといえる。
+tree->list-1は再帰プロセスで、tree->list-2は反復プロセスなので
+
+呼び出し回数だけだと動きを把握しづらいので内容も出力してみる
+#+BEGIN_SRC scheme
+(define (tree->list-1 tree)
+  (display tree) (newline)
+  (if (null? tree)
+      '()
+      (append (tree->list-1 (left-branch tree))
+              (cons (entry tree)
+                    (tree->list-1 (right-branch tree))))))
+(define (tree->list-2 tree)
+  (define (copy-to-list tree result-list)
+    (display tree) (display " ") (display result-list) (newline) 
+    (if (null? tree)
+        result-list
+        (copy-to-list (left-branch tree)
+                      (cons (entry tree)
+                            (copy-to-list (right-branch tree) result-list)))))
+  (copy-to-list tree '()))
+
+
+;; test code
+(tree->list-1 fig2.16a)
+(tree->list-1 fig2.16b)
+(tree->list-1 fig2.16c)
+(tree->list-1 fig2.17)
+
+(tree->list-2 fig2.16a)
+(tree->list-2 fig2.16b)
+(tree->list-2 fig2.16c)
+(tree->list-2 fig2.17)
+#+END_SRC
+
+出力結果: tree-list-1
+#+BEGIN_SRC 
+gosh> (tree->list-1 fig2.16a)
+(7 (3 (1 () ()) (5 () ())) (9 () (11 () ())))
+(3 (1 () ()) (5 () ()))
+(1 () ())
+()
+()
+(5 () ())
+()
+()
+(9 () (11 () ()))
+()
+(11 () ())
+()
+()
+(1 3 5 7 9 11)
+
+gosh> (tree->list-1 fig2.16b)
+(3 (1 () ()) (7 (5 () ()) (9 () (11 () ()))))
+(1 () ())
+()
+()
+(7 (5 () ()) (9 () (11 () ())))
+(5 () ())
+()
+()
+(9 () (11 () ()))
+()
+(11 () ())
+()
+()
+(1 3 5 7 9 11)
+
+gosh> (tree->list-1 fig2.16c)
+(5 (3 (1 () ()) ()) (9 (7 () ()) (11 () ())))
+(3 (1 () ()) ())
+(1 () ())
+()
+()
+()
+(9 (7 () ()) (11 () ()))
+(7 () ())
+()
+()
+(11 () ())
+()
+()
+(1 3 5 7 9 11)
+
+gosh> (tree->list-1 fig2.17)
+(1 () (3 () (5 () (7 () (9 () (11 () ()))))))
+()
+(3 () (5 () (7 () (9 () (11 () ())))))
+()
+(5 () (7 () (9 () (11 () ()))))
+()
+(7 () (9 () (11 () ())))
+()
+(9 () (11 () ()))
+()
+(11 () ())
+()
+()
+(1 3 5 7 9 11)
+#+END_SRC
+
+出力結果: tree-list-2
+#+BEGIN_SRC
+gosh> (tree->list-2 fig2.16a)
+(7 (3 (1 () ()) (5 () ())) (9 () (11 () ()))) ()
+(9 () (11 () ())) ()
+(11 () ()) ()
+() ()
+() (11)
+() (9 11)
+(3 (1 () ()) (5 () ())) (7 9 11)
+(5 () ()) (7 9 11)
+() (7 9 11)
+() (5 7 9 11)
+(1 () ()) (3 5 7 9 11)
+() (3 5 7 9 11)
+() (1 3 5 7 9 11)
+(1 3 5 7 9 11)
+
+gosh> (tree->list-2 fig2.16b)
+(3 (1 () ()) (7 (5 () ()) (9 () (11 () ())))) ()
+(7 (5 () ()) (9 () (11 () ()))) ()
+(9 () (11 () ())) ()
+(11 () ()) ()
+() ()
+() (11)
+() (9 11)
+(5 () ()) (7 9 11)
+() (7 9 11)
+() (5 7 9 11)
+(1 () ()) (3 5 7 9 11)
+() (3 5 7 9 11)
+() (1 3 5 7 9 11)
+(1 3 5 7 9 11)
+
+gosh> (tree->list-2 fig2.16c)
+(5 (3 (1 () ()) ()) (9 (7 () ()) (11 () ()))) ()
+(9 (7 () ()) (11 () ())) ()
+(11 () ()) ()
+() ()
+() (11)
+(7 () ()) (9 11)
+() (9 11)
+() (7 9 11)
+(3 (1 () ()) ()) (5 7 9 11)
+() (5 7 9 11)
+(1 () ()) (3 5 7 9 11)
+() (3 5 7 9 11)
+() (1 3 5 7 9 11)
+(1 3 5 7 9 11)
+
+gosh> (tree->list-2 fig2.17)
+(1 () (3 () (5 () (7 () (9 () (11 () ())))))) ()
+(3 () (5 () (7 () (9 () (11 () ()))))) ()
+(5 () (7 () (9 () (11 () ())))) ()
+(7 () (9 () (11 () ()))) ()
+(9 () (11 () ())) ()
+(11 () ()) ()
+() ()
+() (11)
+() (9 11)
+() (7 9 11)
+() (5 7 9 11)
+() (3 5 7 9 11)
+() (1 3 5 7 9 11)
+(1 3 5 7 9 11)
+#+END_SRC
+
+備考
+#+BEGIN_SRC scheme
+;; テストデータ作成時にaccumulate (fold-right)使おうとしたけど結局fold-leftも使えなそうだった件
+
+;; 直感的。rootエントリは1
+;; ただしこれはfold-leftともちょっと違う
+;; fold-leftだと一番右の演算は(adjoin-set tree 1) となるはずで、これはadjoin-setではエラーとなる。
+(adjoin-set 11 (adjoin-set 9 (adjoin-set 7 (adjoin-set 5 (adjoin-set 3 (adjoin-set 1 tree))))))
+> (1 () (3 () (5 () (7 () (9 () (11 () ()))))))
+;; 反直感的。rootエントリが11になっている。
+;; fold-rightだと列の最初の項目は一番最後に演算されるので、今回は意図した通りの動きではない
+(accumulate adjoin-set '() '(1 3 5 7 9 11))
+> (11 (9 (7 (5 (3 (1 () ()) ()) ()) ()) ()) ()) 
+#+END_SRC
+
+*** 練習問題 2.64
+
+list->treeとpartial-tree
+#+BEGIN_SRC scheme
+(define (list->tree elements)
+  (car (partial-tree elements (length elements))))
+(define (partial-tree elts n)
+  (if (= n 0)
+      (cons '() elts)
+      (let ((left-size (quotient (- n 1) 2)))
+        (let ((left-result (partial-tree elts left-size)))
+          (let ((left-tree (car left-result))
+                (non-left-elts (cdr left-result))
+                (right-size (- n (+ left-size 1))))
+            (let ((this-entry (car non-left-elts))
+                  (right-result (partial-tree (cdr non-left-elts) right-size)))
+              (let ((right-tree (car right-result))
+                    (remaining-elts (cdr right-result)))
+                (cons (make-tree this-entry
+                                 left-tree
+                                 right-tree)
+                      remaining-elts))))))))
+#+END_SRC
+
+**** a. partial-treeの挙動の説明と(1 3 5 7 9 11)で生成される木を描く
+
+**** b. n要素リストの変換に必要なステップ数の増加オーダー
+*** 練習問題 2.65
+
+TBD
+
+** 集合と情報検索
+
+データベースの応用例。データベースをレコードの集合として表現するとする。あるキーに対するレコードの場所を調べるにはlookupという手続きを使う。
+- lookup
+  - キーとデータベースを引数にとり、そのキーを持つレコードを返すか、そのようなレコードがなければ偽を返す
+
+レコードの集合が順序なしリストとして表現されている場合のlookup実装
+#+BEGIN_SRC scheme
+(define (lookup given-key set-of-records)
+  (cond ((null? set-of-records) #f)
+        ((equal? given-key (key (car set-of-records))) (car set-of-records))
+        (else (lookup given-key (cdr set-of-records)))))
+#+END_SRC
+
+- （コメント）
+  - 最悪全てのレコードをスキャンするのでステップ数の増加オーダーは \theta(n)
+
+** 練習問題
+*** 練習問題 2.66 二分木で表現されたレコード集合に対するlookup実装
+
+* 2.3.4 例: ハフマン符号化木
