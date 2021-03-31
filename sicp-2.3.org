@@ -937,6 +937,16 @@ intersection-setではさらに目覚ましい高速化が達成出来る
           (else (iter (append lower (list (car rest)))
                       (cdr rest)))))
   (iter '() set))
+
+;;==== 時田さん回答 こちらの方が無駄がない =====
+(define (adjoin-set x set)
+  (cond ((null? set) (cons x set))
+        ((= x (car set)) set)
+        ((< x (car set)) (cons x set))
+        (else (cons (car set) (adjoin-set x (cdr set))))
+    )
+)
+
 #+END_SRC
 
 動作確認
@@ -948,7 +958,7 @@ intersection-setではさらに目覚ましい高速化が達成出来る
 #+END_SRC
 
 増加オーダーの考察
-- TBD
+- 最速で初回で見つかる。最悪setの最後の要素まで見るので平均 \theta(1/2N)
 
 *** 練習問題 2.62 順序つきリストに対するunion-set実装
 
@@ -994,10 +1004,21 @@ intersection-setではさらに目覚ましい高速化が達成出来る
   - 左のリンクは、そのノードより小さな要素を指している
   - 右のリンクは、そのノードより大きな要素を指している
 
-木の効率性の話し
-- TBD
+*木による表現の利点（木の効率性の話し）*
 
-木のリスト表現
+ある数値xがある集合に含まれているかチェックする場合:
+- まずxとトップノードのエントリを比較する
+  - もしxがそれより小さければ左部分木だけを探索すれば良い
+  - もしxがそれより大きければ右部分木だけを探索すれば良い
+
+もし木が *バランスが取れた* 状態であれば、各部分木の大きさは元の木の約
+半分になる。つまり一回のステップで大きさnの木を探索するという問題を、
+大きさn/2の木を探索するという問題に縮小したことになる。
+
+つまり、大きさnの木の探索に必要なステップ数は \theta(log n) で増加すると予想できる。
+
+
+木はリストを使って表現出来る。
 - 各ノードは、ノードのエントリ、左部分木、右部分木の三つの項目のリストとなる
 #+BEGIN_SRC scheme
 (define (entry tree) (car tree))                              ;; selector
@@ -1028,6 +1049,19 @@ intersection-setではさらに目覚ましい高速化が達成出来る
                                       (adjoin-set x (right-branch set))))))
 #+END_SRC
 
+*** データ抽象化の観点での整理
+注釈39にあるデータ抽象化での整理
+- 集合は集合演算（手続き）により木表現を抽象化する
+  - *union-set*
+  - *intersection-set*
+  - *element-of-set?*
+  - *adjoin-set*
+- 木は、ノードの演算（手続き）によりリスト表現を抽象化する
+  - *entry*
+  - *left-branch*
+  - *right-branch*
+  - *make-tree*
+
 ** 練習問題
 *** 練習問題 2.63 tree->listの解析
 
@@ -1050,7 +1084,8 @@ tree->list実装
   (copy-to-list tree '()))
 #+END_SRC
 
-- a.)
+- a.) 二つの手続きは全ての木に対して同じ結果を生むか？
+
 #+BEGIN_SRC scheme
 ;; test data
 (define tree '())
@@ -1100,11 +1135,127 @@ tree->list実装
 (tree->list-2 fig2.16c)
 > (1 3 5 7 9 11)
 (tree->list-2 fig2.17)
+> (1 3 5 7 9 11)
 #+END_SRC
 
 上記動作結果より、二つの手続きは全ての木に対して同じ結果を生成すると考えられる。
 
 - b.) 増加オーダーのステップ数の考察
+
+**** Current
+
+ステップ数を数えてみる。
+#+BEGIN_SRC scheme
+;; カウント情報の追加
+(define (tree->list-1 tree)
+  (display "1 ")
+  (if (null? tree)
+      '()
+      (append (tree->list-1 (left-branch tree))
+              (cons (entry tree)
+                    (tree->list-1 (right-branch tree))))))
+
+(define (tree->list-2 tree)
+  (define (copy-to-list tree result-list)
+    (display "1 ")
+    (if (null? tree)
+        result-list
+        (copy-to-list (left-branch tree)
+                      (cons (entry tree)
+                            (copy-to-list (right-branch tree) result-list)))))
+  (copy-to-list tree '()))
+
+;; 補助手続き
+(define (seq n)
+  (define (iter m res)
+    (if (> m n)
+        res
+        (iter (+ m 1) (append res (list m)))))
+  (iter 1 '()))
+
+;; list->tree from exer. 2.64
+(define (list->tree elements)
+  (car (partial-tree elements (length elements))))
+(define (partial-tree elts n)
+  (if (= n 0)
+      (cons '() elts)
+      (let ((left-size (quotient (- n 1) 2)))
+        (let ((left-result (partial-tree elts left-size)))
+          (let ((left-tree (car left-result))
+                (non-left-elts (cdr left-result))
+                (right-size (- n (+ left-size 1))))
+            (let ((this-entry (car non-left-elts))
+                  (right-result (partial-tree (cdr non-left-elts) right-size)))
+              (let ((right-tree (car right-result))
+                    (remaining-elts (cdr right-result)))
+                (cons (make-tree this-entry
+                                 left-tree
+                                 right-tree)
+                      remaining-elts))))))))
+#+END_SRC
+
+ステップ数のカウント（練習問題 2.64のlist->treeを使って検証）
+- tree->list-1
+  #+BEGIN_SRC scheme
+  (tree->list-1 (list->tree (seq 1)))  
+  (+ 1 1 1)
+  3
+
+  (tree->list-1 (list->tree (seq 4)))  
+  (+ 1 1 1 1 1 1 1 1 1)
+  9
+
+  (tree->list-1 (list->tree (seq 8)))  
+  (+ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+  17
+
+  (tree->list-1 (list->tree (seq 16))) 
+  (+ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+  33
+
+  (tree->list-1 (list->tree (seq 32))) 
+  (+ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+  65
+  #+END_SRC
+- tree->list-2
+  #+BEGIN_SRC scheme
+  (tree->list-2 (list->tree (seq 1)))  ;; 1 1 1
+  (+ 1 1 1)
+  3
+
+  (tree->list-2 (list->tree (seq 4)))  ;; 1 1 1 1 1 1 1 1 1
+  (+ 1 1 1 1 1 1 1 1 1)
+  9
+
+  (tree->list-2 (list->tree (seq 8)))  ;; 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 
+  (+ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+  17
+
+  (tree->list-2 (list->tree (seq 16))) ;; 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+  (+ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+  33
+
+  (tree->list-2 (list->tree (seq 32))) ;; 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+  (+ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+  65
+  #+END_SRC
+
+以上より、tree->list-1, tree-list-2ともにステップ数は 2N + 1 なので、増加オーダーは \theta(N) である。
+
+
+**** OLD (Deprecated)
+
+  - tree->list-1、tree-list2ともにあるエントリの左部分木を取り出し、そ
+    の結果と、当該エントリと右部分木のペアを連結していくという挙動になっ
+    ている
+  - これは結局木構造の各ノードの数 + リーフノードの子（空リスト）数分
+    だけ再帰的に実行される。式で表すと、ステップ数をSとすると
+    #+BEGIN_SRC latex
+    \[
+        S = N + (N + 1) = 2N + 1
+    \]
+    #+END_SRC
+  - 従って、増加オーダーは、 \theta(N) となる
 
 #+BEGIN_SRC scheme
 (define test1
@@ -1330,13 +1481,14 @@ gosh> (tree->list-2 fig2.17)
 ;; fold-leftだと一番右の演算は(adjoin-set tree 1) となるはずで、これはadjoin-setではエラーとなる。
 (adjoin-set 11 (adjoin-set 9 (adjoin-set 7 (adjoin-set 5 (adjoin-set 3 (adjoin-set 1 tree))))))
 > (1 () (3 () (5 () (7 () (9 () (11 () ()))))))
+
 ;; 反直感的。rootエントリが11になっている。
 ;; fold-rightだと列の最初の項目は一番最後に演算されるので、今回は意図した通りの動きではない
 (accumulate adjoin-set '() '(1 3 5 7 9 11))
 > (11 (9 (7 (5 (3 (1 () ()) ()) ()) ()) ()) ()) 
 #+END_SRC
 
-*** 練習問題 2.64
+*** 練習問題 2.64 バランス木
 
 list->treeとpartial-tree
 #+BEGIN_SRC scheme
@@ -1362,16 +1514,253 @@ list->treeとpartial-tree
 
 **** a. partial-treeの挙動の説明と(1 3 5 7 9 11)で生成される木を描く
 
-**** b. n要素リストの変換に必要なステップ数の増加オーダー
-*** 練習問題 2.65
+***** 挙動の説明
 
-TBD
+- 挙動メモ
+  - left-sizeには $(n-1)/2$ （partial-treeの要素数 - 1の半分（の商、つまり整数部分）） がセットされる
+  - left-size数だけpartial-treeを作り、それをleft-resultに格納する。こ
+    れはつまり、リストの先頭から (n-1)/2 要素まででpartial-treeを作る
+    ということ。さらにこのときpartial-treeを再帰的に呼び出しているので、
+    リストの左半分を部分リストに作り変えるということを再帰的におこなっ
+    ている。
+    #+BEGIN_SRC scheme
+    (let ((left-result (partial-tree elts left-size))))
+    #+END_SRC
+  - 次に、left-result（これは構築された部分木とそこに含まれなかった要
+    素のリストのペア）を使って、left-tree, non-leaf-elts, right-sizeと
+    いう局所変数を定義する。
+    - left-tree: 左部分木
+    - non-left-elts: 左部分木以外の要素のリスト
+    - right-size: n - (left-size) + 1 => ここで +1 しているのは、この
+      後でリストの中央の要素を取り出して使いたいから
+  - 次に、上記局所変数を使って、this-entry, right-resultという局所変数
+    を定義する
+    - this-entry: 部分木でない要素リストの先頭要素（つまりリストの中央の要素）
+    - right-result: this-entryを除いた左部分木でない要素リストから
+      right-size数だけ部分木を作成した結果。partial-treeを呼ぶのでペアで受け取る
+      #+BEGIN_SRC scheme
+      (let ((rignth-result (partial-tree (cdr non-left-elts) right-size))))
+      #+END_SRC
+  - 次に、right-resultを使って、right-tree, remaining-eltsという局所変
+    数を定義する
+    - right-tree: this-entryに対する右部分木
+    - remaining-elts: right-treeに入らなかった余りの要素リスト
+  - 最後にconsでthis-entryをエントリとしたノードを作成する。このとき
+    consの最後の要素にはremaining-eltsを含めている。これは部分木からみ
+    ると親ノードの右部分木に相当する要素のリストになる。もし着目してい
+    る要素がルートの場合、remaining-eltsは空リストになるはず。
+    #+BEGIN_SRC scheme
+    (cons (make-tree this-entry left-tree right-tree) remaining-elts)
+    #+END_SRC
+
+- 挙動まとめ
+  - partial-treeは与えられたリストについて、中央の要素（エントリ）を基
+    準にしてそれよりも先頭側を左部分木、末尾側を右部分木となるように
+    partial-treeを再帰的に呼び出す。そして左部分木と右部分木とエントリ
+    を使ってノードを作成（make-tree）し、当該ノードとそのノードの左右
+    部分木に含まれなかった（親ノードから見て右部分木に当たる）要素のリ
+    ストをconsして返す
+    - ルートノードを処理するときは、（親ノードは存在しないので）
+      remaining-eltsは空リストになる
+  - partial-treeは左右の部分木毎にその中央要素を起点にリストを生成する
+    のでバランスの取れた木を生成することが可能である
+
+***** (1 3 5 7 9 11)に対するlist->treeが生成する木の描画
+
+  - 実行結果
+    #+BEGIN_SRC scheme
+    > (list->tree '(1 3 5 7 9 11))
+    (5 (1 () (3 () ())) (9 (7 () ()) (11 () ())))
+    #+END_SRC
+  - 生成された木
+    [[./img/sicp_2-3-3_ex2-64_a.png]]
+
+**** b. n要素リストの変換に必要なステップ数の増加オーダー
+- ノート参照
+- 結論としてはこちらも \theta(N) と予想される。
+
+*増加オーダーの検証 (TBD)*
+- n要素の順序つきリストを二分木に変換するステップ数を確認する
+#+BEGIN_SRC scheme
+(define (list->tree elements)
+  (car (partial-tree elements (length elements))))
+(define (partial-tree elts n)
+  (display "1 ")
+  (if (= n 0)
+      (cons '() elts)
+      (let ((left-size (quotient (- n 1) 2)))
+        (let ((left-result (partial-tree elts left-size)))
+          (let ((left-tree (car left-result))
+                (non-left-elts (cdr left-result))
+                (right-size (- n (+ left-size 1))))
+            (let ((this-entry (car non-left-elts))
+                  (right-result (partial-tree (cdr non-left-elts) right-size)))
+              (let ((right-tree (car right-result))
+                    (remaining-elts (cdr right-result)))
+                (cons (make-tree this-entry
+                                 left-tree
+                                 right-tree)
+                      remaining-elts))))))))
+
+;; List Generator
+(define (seq n)
+  (define (iter m res)
+    (if (> m n)
+        res
+        (iter (+ m 1) (append res (list m)))))
+  (iter 1 '()))
+
+
+(list->tree (seq 1))  ;; 1 1 1
+(+ 1 1 1)
+> 3
+(list->tree (seq 2))  ;; 1 1 1 1 1
+(+ 1 1 1 1 1)
+> 5
+(list->tree (seq 4))  ;; 1 1 1 1 1 1 1 1 1
+(+ 1 1 1 1 1 1 1 1 1)
+> 9
+(list->tree (seq 8))  ;; 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+(+ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+> 17
+(list->tree (seq 16)) ;; 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+(+ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+> 33
+(list->tree (seq 32)) ;; 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+(+ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+> 65
+(list->tree (seq 64)) ;; 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+(+ 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)
+> 129
+#+END_SRC
+
+これより、ステップ数は 2N + 1 になるので、増加オーダーは \theta(N)
+
+*** 練習問題 2.65 \theta(n) での union-setとintersection-setの実装
+
+増加オーダーのまとめ
+- tree <=> list 変換手続き
+  | procedure    | complexity |
+  |--------------+------------|
+  | tree->list-1 | \theta(n)  |
+  | tree->list-2 | \theta(n)  |
+  | list->tree   | \theta(n)  |
+
+- 集合演算
+  | procedure        | complexity (not ordered) | complexity (ordered) | complexity (balanced tree) | note                |
+  |------------------+--------------------------+----------------------+----------------------------+---------------------|
+  | union-set        | \theta(n^2)              | \theta(n)            |                            | exercise 2.59, 2.62 |
+  | intersection-set | \theta(n^2)              | \theta(n)            |                            |                     |
+  | element-of-set?  | \theta(n)                | \theta(n)            | \theta(\log n)             |                     |
+  | adjoin-set       | \theta(n)                | \theta(n)            | \theta(\log n)             | exercise 2.61       |
+
+
+上記より、 \theta(n) のunion-setとintersection-setを実装する方針は以下のようになる。
+- バランスした二分木tree1, tree2を順序付きリストに変換する
+  (tree->list-1 or tree->list-2)。ステップ数は n + m (m = αnとすれば、
+  n + m = n + αn = (1 + α)n)なので、増加オーダーは \theta(n)
+- 順序付きリストset1, set2を使って union-set(intersection-set)を実行する。増加オーダーは \theta(n)
+- 順序付きリストをlist->treeを使ってバランスした二分木に戻す。増加オーダーは \theta(n)
+
+上記三つフェーズのそれぞれは \theta(n) であり、全体としてのステップ数
+は各フェーズのステップ数の和になるので全体としての増加オーダーも
+\theta(n) となる
+
+回答
+#+BEGIN_SRC scheme
+(define (union-set-internal set1 set2)
+  (cond ((null? set1) set2)
+        ((null? set2) set1)
+        (else
+          (if (null? set1)
+              set2
+              (let ((x1 (car set1)) (x2 (car set2)))
+                (cond ((= x1 x2)
+                       (cons x1 (union-set-internal (cdr set1) (cdr set2))))
+                      ((< x1 x2)
+                       (cons x1 (union-set-internal (cdr set1) set2)))
+                      ((> x1 x2)
+                       (cons x2 (union-set-internal set1 (cdr set2))))))))))
+
+(define (intersection-set-internal set1 set2)
+  (if (or (null? set1) (null? set2))
+      '()
+      (let ((x1 (car set1)) (x2 (car set2)))
+        (cond ((= x1 x2)
+               (cons x1 (intersection-set-internal (cdr set1) (cdr set2))))
+              ((< x1 x2)
+               (intersection-set-internal (cdr set1) set2))
+              ((< x2 x1)
+               (intersection-set-internal set1 (cdr set2)))))))
+
+(define (union-set set1 set2)
+  (let ((list1 (tree->list-1 set1))
+        (list2 (tree->list-2 set2)))
+    (list->tree (union-set-internal list1 list2))))
+
+(define (intersection-set set1 set2)
+  (let ((list1 (tree->list-1 set1))
+        (list2 (tree->list-2 set2)))
+    (list->tree (intersection-set-internal list1 list2))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(union-set
+ (list->tree '(1 2 3))
+ (list->tree '(1 2 3))) ;; (2 (1 () ()) (3 () ()))
+(union-set
+ (list->tree '(1 3 5))
+ (list->tree '(2 4 6))) ;; (3 (1 () (2 () ())) (5 (4 () ()) (6 () ())))
+
+(intersection-set
+ (list->tree '(1 2 3))
+ (list->tree '(1 2 3))) ;; (2 (1 () ()) (3 () ()))
+(intersection-set
+ (list->tree '(1 3 5))
+ (list->tree '(2 4 6))) ;; ()
+(intersection-set
+ (list->tree '(1 3 5 7 8 9 10))
+ (list->tree '(2 4 6 7 8 10))) ;; (8 (7 () ()) (10 () ()))
+#+END_SRC
+
+*最終的な増加オーダーのまとめ*
+- tree <=> list 変換手続き
+  | procedure    | complexity |
+  |--------------+------------|
+  | tree->list-1 | \theta(n)  |
+  | tree->list-2 | \theta(n)  |
+  | list->tree   | \theta(n)  |
+
+- 集合演算
+  | procedure        | complexity (not ordered) | complexity (ordered) | complexity (balanced tree) | note                      |
+  |------------------+--------------------------+----------------------+----------------------------+---------------------------|
+  | union-set        | \theta(n^2)              | \theta(n)            | \theta(n)                  | exercise 2.59, 2.62, 2.65 |
+  | intersection-set | \theta(n^2)              | \theta(n)            | \theta(n)                  | exercise 2.65             |
+  | element-of-set?  | \theta(n)                | \theta(n)            | \theta(\log n)             |                           |
+  | adjoin-set       | \theta(n)                | \theta(n)            | \theta(\log n)             | exercise 2.61             |
+
 
 ** 集合と情報検索
 
-データベースの応用例。データベースをレコードの集合として表現するとする。あるキーに対するレコードの場所を調べるにはlookupという手続きを使う。
-- lookup
-  - キーとデータベースを引数にとり、そのキーを持つレコードを返すか、そのようなレコードがなければ偽を返す
+ここまでは
+- 集合をリストで表現するのにどのような方法があるかを検討した。
+- データオブジェクトに対してどのような表現を選ぶかということが、パフォーマンスに大きな影響を及ぼすことをみた。
+
+集合に対して詳しく検討するもう一つの理由
+- 情報検索に関わる応用の中でよく出てくるものだから
+
+以下では個別のレコードを大量に含むデータベースについて考える。
+- 企業の人事ファイルや会計システムの取引など
+- データ管理システムではレコードにアクセスする効率的な手法が必要となる
+  - 各レードの中で識別 *キー(key)* として使える部分を特定することによって行える
+  - 例) 従業員番号、取引番号等（レコードが一意に特定できれば何でも良い）
+- レコードをデータ構造として定義する際は、レコードに関連付けられたキーを取得する =key= セレクタ手続きを持たせる
+ここではデータベースをレコードの集合として表現する
+
+あるキーに対するレコードの場所を調べるには =lookup= という手続きを使う。
+- キーとデータベースを引数にとり、そのキーを持つレコードを返すか、レコードがなければ偽(#f)を返す
+- lookupは =element-of-set?= とほぼ同じように実装される
 
 レコードの集合が順序なしリストとして表現されている場合のlookup実装
 #+BEGIN_SRC scheme
@@ -1381,10 +1770,380 @@ TBD
         (else (lookup given-key (cdr set-of-records)))))
 #+END_SRC
 
-- （コメント）
-  - 最悪全てのレコードをスキャンするのでステップ数の増加オーダーは \theta(n)
+=コメント=
+- 最悪全てのレコードをスキャンするのでステップ数の増加オーダーは \theta(n)
+
+レコードを”ランダムアクセス”する必要がある情報検索システムでは、普通は木構造による手法によって表現される。（例えば二分木等）
+
+システムを設計するにあたってはデータ抽象化の方法論はとても役に立つ
+- 設計者は順序なしリストのような単純で素直な表現で最初の実装を作り(*quick and dirty*)、システムの残りの部分のテストしやすくする
+- データ表現を修正してより洗練されたものにすることは後になってからでもできる
+
+もしデータベースが抽象セレクタとコンストラクタによってアクセスされるようになっていれば、上記のように表現を変更しても、システムの残りの部分には修正の必要がないはず。
 
 ** 練習問題
 *** 練習問題 2.66 二分木で表現されたレコード集合に対するlookup実装
 
+実装計画
+- 最初にset-of-recordsがnullかチェックし、nullだったらfalseを返す
+- 次に、given-keyとsetの先頭要素のkeyを比較する
+  - 一致: その要素を返す
+  - given-key < (key entry): (left-branch set)についてlookupを再帰呼び出し
+  - given-key > (key entry): (right-branch set)についてlookupを再帰呼び出し
+
+回答
+#+BEGIN_SRC scheme
+(define (lookup given-key set-of-records)
+  (if (null? set-of-records)
+      #f
+      (cond ((equal? given-key (key (car set-of-records))) (car set-of-records))
+            ((< given-key (key (car set-of-records))) (lookup given-key (left-branch set-of-records)))
+            (else (lookup given-key (right-branch set-of-records))))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+;; 二分木のインターフェースにkeyを取得する手続きを追加する
+(define (entry tree) (car tree))                              ;; selector
+(define (left-branch tree) (cadr tree))                       ;; selector
+(define (right-branch tree) (caddr tree))                     ;; selector
+(define (make-tree entry left right) (list entry left right)) ;; constructor
+;; 簡単のため、keyはentryそのものとする
+(define (key tree)
+  (if (pair? tree)
+      (entry tree)
+      tree))
+
+;; insert
+(define db (list->tree '(1 2 3 4 5 6 7 8 9 10)))
+
+;; lookup tests
+(lookup 1 db)
+(lookup 5 db)
+(lookup 10 db)
+(lookup 11 db)
+#+END_SRC
+
 * 2.3.4 例: ハフマン符号化木
+
+この節では集合と木を操作するためのリスト構造とデータ抽象化の使い方を練習する。
+ここではデータを1と0の列（ビット列）として表現する手法を適用対象とする
+- n個の異なる記号を区別しようとすると、記号毎に $\log2 n$ ビットを使う必要がある
+- 例) A,B,C,D,E,F,G,H の8個の記号を使う場合、1文字あたり3ビットの符号を選べる
+  #+BEGIN_SRC 
+  A 000  C 010  E 100  G 110
+  B 001  D 011  F 101  H 111
+  #+END_SRC
+  - この符号を使って =BACADAEAFABBAAAGAH= を符号化すると、以下のように54ビットの列になる
+    #+BEGIN_SRC 
+    001000010000011000100000101000001001000000000110000111
+    #+END_SRC
+
+** ハフマン木の生成
+
+- TBD
+
+** ハフマン木の表現
+
+木の表現方法
+- 木の葉
+  - =leaf= という記号、その葉の記号、重み、からなるリストで表現する
+  #+BEGIN_SRC scheme
+  (define (make-leaf symbol weight) (list 'leaf symbol weight))
+  (define (leaf? object) (eq? (car object) 'leaf))
+  (define (symbol-leaf x) (cadr x))
+  (define (weight-leaf x) (caddr x))
+  #+END_SRC
+
+- 一般の木
+  - 左枝、右枝、記号の集合、重み、からなる
+  - 記号の集合: 単純な記号のリスト(appendして和集合を作成)
+  - 木の重み: 二つのノードの重みの合計
+  #+BEGIN_SRC scheme
+  ;; コンストラクタ
+  (define (make-code-tree left right)
+    (list left
+          right
+          (append (symbols left) (symbols right)) ;; 記号の集合
+          (+ (weight left) (weight right))))      ;; 重み（左枝、右枝の重みの合計）
+
+  ;; セレクタ
+  (define (left-branch tree) (car tree))
+  (define (right-branch tree) (cadr tree))
+  (define (symbols tree)
+    (if (leaf? tree)
+        (list (symbol-leaf tree))
+        (caddr tree)))
+  (define (weight tree)
+    (if (leaf? tree)
+        (weight-leaf tree)
+        (cadddr tree)))
+  #+END_SRC
+
+- 手続きsymbolsとweightは渡されたものが葉である場合と一般の木である場合とで処理を分ける必要がある。
+  - これらは、 *ジェネリック手続き (generic procedure)* （二種類以上のデータを扱う手続き）の簡単な例となっている
+
+** 復号化手続き
+
+以下は復号化アルゴリズムを実装したもの。0と1のリストに加え、ハフマン木を引数にとる。
+- *decode-1* 手続き
+  - 残りのビットのリストと、木の中での現在位置、という二つの引数をとる
+  - リストの次のビットが0か1かによって左か右の枝を”降りて”いく（ =choose-branch= 手続きで行っている）
+  - 葉に辿り着くと、木の根から始めてメッセージの残りを複合した結果に葉の記号をconsすることで、メッセージの次の記号として返す
+- *choose-branch* 手続き
+  - リストの次のビットが0か1かによって左か右の枝を”降りて”いく
+  - 入力データ中に0か1以外のものを見つけたらエラーを出す
+
+#+BEGIN_SRC scheme
+(define (decode bits tree)
+  (define (decode-1 bits current-branch)
+    (if (null? bits)
+        '()
+        (let ((next-branch (choose-branch (car bits) current-branch)))
+          (if (leaf? next-branch)
+              (cons (symbol-leaf next-branch)
+                    (decode-1 (cdr bits) tree))
+              (decode-1 (cdr bits) next-branch)))))
+  (decode-1 bits tree))
+
+(define (choose-branch bit branch)
+  (cond ((= bit 0) (left-branch branch))
+        ((= bit 1) (right-branch branch))
+        (else (error "bad bit: CHOOSE-BRANCH" bit))))
+#+END_SRC
+
+** 重み付き要素の集合
+
+- 木の生成アルゴリズムでは集合の最小項目を何度も求めることになるので、順序付きの表現を使うほうが便利
+- 葉と木の集合は、重みの昇順に配置した要素のリストとして表現する
+
+以下は集合を構築するための手続き
+#+BEGIN_SRC scheme
+(define (adjoin-set x set)
+  (cond ((null? set) (list x))
+        ((< (weight x) (weight (car set))) (cons x set))
+        (else (cons (car set)
+                    (adjoin-set x (cdr set))))))
+#+END_SRC
+
+以下は =((A 4) (B 2) (C 1) (D 1))= のような記号と頻度のペアのリストを取り、初期状態での葉の順序付き集合を構築し、ハフマンアルゴリズムに従ってすぐ連結できるようにする手続き
+#+BEGIN_SRC scheme
+(define (make-leaf-set pairs)
+  (if (null? pairs)
+      '()
+      (let ((pair (car pairs)))
+        (adjoin-set (make-leaf (car pair)    ;; symbol
+                               (cadr pair))  ;; frequency
+                    (make-leaf-set (cdr pairs))))))
+#+END_SRC
+
+** 練習問題
+
+事前準備
+#+BEGIN_SRC scheme
+;;; leaf procedures ;;;
+(define (make-leaf symbol weight) (list 'leaf symbol weight))
+(define (leaf? object) (eq? (car object) 'leaf))
+(define (symbol-leaf x) (cadr x))
+(define (weight-leaf x) (caddr x))
+
+;;; general tree procedures ;;;
+;; constructor
+(define (make-code-tree left right)
+  (list left
+        right
+        (append (symbols left) (symbols right)) ;; 記号の集合
+        (+ (weight left) (weight right))))      ;; 重み（左枝、右枝の重みの合計）
+;; selector
+(define (left-branch tree) (car tree))
+(define (right-branch tree) (cadr tree))
+(define (symbols tree)
+  (if (leaf? tree)
+      (list (symbol-leaf tree))
+      (caddr tree)))
+(define (weight tree)
+  (if (leaf? tree)
+      (weight-leaf tree)
+      (cadddr tree)))
+
+
+;;; decode procedures ;;;
+(define (decode bits tree)
+  (define (decode-1 bits current-branch)
+    (if (null? bits)
+        '()
+        (let ((next-branch (choose-branch (car bits) current-branch)))
+          (if (leaf? next-branch)
+              (cons (symbol-leaf next-branch)
+                    (decode-1 (cdr bits) tree))
+              (decode-1 (cdr bits) next-branch)))))
+  (decode-1 bits tree))
+(define (choose-branch bit branch)
+  (cond ((= bit 0) (left-branch branch))
+        ((= bit 1) (right-branch branch))
+        (else (error "bad bit: CHOOSE-BRANCH" bit))))
+
+;;; Procedures for make the encoded tree ;;;
+(define (adjoin-set x set)
+  (cond ((null? set) (list x))
+        ((< (weight x) (weight (car set))) (cons x set))
+        (else (cons (car set)
+                    (adjoin-set x (cdr set))))))
+(define (make-leaf-set pairs)
+  (if (null? pairs)
+      '()
+      (let ((pair (car pairs)))
+        (adjoin-set (make-leaf (car pair)    ;; symbol
+                               (cadr pair))  ;; frequency
+                    (make-leaf-set (cdr pairs))))))
+#+END_SRC
+
+*** 練習問題 2.67 decode手続きによるメッセージの復号化
+
+符号化木とサンプルメッセージの定義
+#+BEGIN_SRC scheme
+;; 符号化木
+(define sample-tree
+  (make-code-tree (make-leaf 'A 4)
+                  (make-code-tree (make-leaf 'B 2)
+                                  (make-code-tree (make-leaf 'D 1)
+                                                  (make-leaf 'C 1)))))
+;;((leaf A 4) ((leaf B 2) ((leaf D 1) (leaf C 1) (D C) 2) (B D C) 4) (A B D C) 8)
+;; ||
+;; \/
+;;((leaf A 4)          ;; left-branch      (as a leaf)
+;; (                   ;; right-branch 1 start
+;;  (leaf B 2)         ;;   left-branch    (as a leaf)
+;;  (                  ;;   right-branch 2 start
+;;   (leaf D 1)        ;;     left-branch  (as a leaf)
+;;   (leaf C 1)        ;;     right-branch (as a leaf)
+;;   (D C)             ;;     symbols
+;;   2                 ;;     weight
+;;  )                  ;;   right-branch 2 end
+;;  (B D C)            ;;   symbols
+;;  4                  ;;   weight
+;; )                   ;; right-branch 1 end
+;; (A B D C)           ;; symbols
+;; 8                   ;; weight
+;;)
+
+;; サンプルメッセージ
+(define sample-message '(0 1 1 0 0 1 0 1 0 1 1 1 0))
+#+END_SRC
+
+decode手続きによる復号化
+#+BEGIN_SRC scheme
+(decode sample-message sample-tree)
+> (A D A B B C A)
+#+END_SRC
+
+*** 練習問題 2.68 encode-symbolの設計
+
+#+BEGIN_SRC scheme
+#+END_SRC
+
+*encode-symbol* の仕様
+- 与えられた木に従って与えられた記号を符号化したビット列を返す
+- 記号が木に含まれていなければエラーを出す
+
+実装戦略
+- 当該ノードが葉の場合
+  - 探索している記号を持っているかをチェック（要らないかも）
+  - 葉に辿り着くまでのビット列を返す
+- 当該ノードが葉ではない（一般の木）場合
+  - left-branchの記号集合とright-branchの記号集合に探索記号が入っているかチェック
+    - left-branchに含まれている場合はビット列に0をappendして再帰呼び出し
+    - right-branchに含まれている場合はビット列に1をappendして再帰呼び出し
+
+回答
+#+BEGIN_SRC scheme
+;; 補助関数 from 2.3.3
+(define  (element-of-set? x set)
+  (cond ((null? set) #f)
+        ((equal? x (car set)) #t)
+        (else (element-of-set? x (cdr set)))))
+
+;; Given procedure
+(define (encode message tree)
+  (if (null? message)
+      '()
+      (append (encode-symbol (car message) tree)
+              (encode (cdr message) tree))))
+
+;; My answer
+(define (encode-symbol symbol tree)
+  (if (leaf? tree)
+      '()
+      (cond ((element-of-set? symbol (symbols (left-branch tree)))
+               (cons 0 (encode-symbol symbol (left-branch tree))))
+            ((element-of-set? symbol (symbols (right-branch tree)))
+               (cons 1 (encode-symbol symbol (right-branch tree))))
+            (else (error "Unknown symbol:" symbol)))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(define decoded-message (decode sample-message sample-tree))
+decoded-message ;; (A D A B B C A)
+
+(encode decoded-message sample-tree) ;; (0 1 1 0 0 1 0 1 0 1 1 1 0)
+sample-message                       ;; (0 1 1 0 0 1 0 1 0 1 1 1 0)
+#+END_SRC
+
+*** 練習問題 2.69 successive-mergeの実装 (ハフマン木の生成)
+
+色々練習
+#+BEGIN_SRC scheme
+(make-leaf-set '((A 4) (B 2) (C 1) (D 1))) ;;((leaf D 1) (leaf C 1) (leaf B 2) (leaf A 4))
+#+END_SRC
+
+*successive-merge* の仕様
+- 集合の中で重みが最小の要素を =make-code-tree= を使って順番にくっつけていく
+- 最後に要素が一つだけ残るようにする。その残った要素が求めるハフマン木となる
+
+実装戦略
+- 引数は葉のリストだが、これは一般の木のノードとしても扱える
+- make-code-treeで最初と二番目（最も重みが小さい二つの）要素を結合し、
+  木のノードを作成し、そのノードを三番目以降の要素からなるリストに
+  adjoin-setで追加する
+- 追加したリストに対してsuccessive-mergeを再帰的に呼び出す
+- この構成だとsuccessive-mergeを呼び出す毎に最小の二つの要素が結合され
+  木のノードとしてリストに追加され、引数のリストの要素数が一つずつ減っ
+  ていくことになる。最後の要素のときにはそれまでの木のノードと最も重み
+  の大きい葉ノードでmake-code-treeが実行されて最終的なハフマン木が生成
+  される。
+- 最後にこのハフマン木をadjoin-setした結果がsuccessive-mergeに渡される
+  と、(cdr pairs) は'()になり、(car pairs)、つまりハフマン木そのもの
+  を返すという処理になる
+
+回答
+#+BEGIN_SRC scheme
+(define (generate-huffman-tree pairs)
+  (successive-merge (make-leaf-set pairs)))
+
+(define (successive-merge pairs)
+  (cond ((null? pairs) '())
+        ((null? (cdr pairs)) (car pairs))
+        (else (let ((first (car pairs))
+                    (second (cadr pairs)))
+                (successive-merge (adjoin-set (make-code-tree first second)
+                                              (cddr pairs)))))))
+#+END_SRC
+
+動作確認
+#+BEGIN_SRC scheme
+(define sample-pairs '((A 4) (B 2) (C 1) (D 1)))
+(generate-huffman-tree sample-pairs)
+> ((leaf A 4) ((leaf B 2) ((leaf D 1) (leaf C 1) (D C) 2) (B D C) 4) (A B D C) 8)
+
+(generate-huffman-tree '()) ;; expected to ()
+> ()
+(generate-huffman-tree '((A 4))) ;; expected to (leaf A 4)
+> (leaf A 4)
+#+END_SRC
+
+*** 練習問題 2.70
+
+*** 練習問題 2.71
+
+*** 練習問題 2.72
